@@ -1,0 +1,41 @@
+schema_version: 1
+id: dalfox
+name: Dalfox
+plugin_version: "1.0.0"
+stage: xss
+description: "Parameter analysis and XSS scanner"
+author: "hahwul"
+
+binary:
+  name: dalfox
+  check_args: ["version"]
+  version_regex: 'v([0-9]+\.[0-9]+(\.[0-9]+)?)'
+
+inputs:
+  - name: urls
+    type: HTTPUrl
+    required: true
+    source: artifact
+
+outputs:
+  - name: xss_findings
+    type: Finding
+    format: jsonl
+    filename: dalfox_findings.jsonl
+
+execution:
+  command: dalfox
+  args:
+    - "file"
+    - "{inputs.urls}"
+    - "--silent"
+    - "--format"
+    - "json"
+    - "-o"
+    - "{outputs.xss_findings}"
+  timeout_seconds: 900
+  retry_count: 0
+
+cache:
+  policy: none
+  default_ttl_hours: 0

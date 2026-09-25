@@ -1,0 +1,38 @@
+schema_version: 1
+id: linkfinder
+name: LinkFinder
+plugin_version: "1.0.0"
+stage: endpoints
+description: "Discover endpoints and secrets in JavaScript files"
+author: "GerbenJavado"
+
+binary:
+  name: linkfinder
+  check_args: ["-h"]
+  version_regex: 'linkfinder'
+
+inputs:
+  - name: js_urls
+    type: HTTPUrl
+    required: true
+    source: artifact
+
+outputs:
+  - name: endpoints
+    type: HTTPUrl
+    format: text_lines
+    filename: js_endpoints.txt
+
+execution:
+  command: linkfinder
+  args:
+    - "-i"
+    - "{inputs.js_urls}"
+    - "-o"
+    - "cli"
+  timeout_seconds: 600
+  retry_count: 1
+
+cache:
+  policy: fresh
+  default_ttl_hours: 24

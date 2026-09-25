@@ -1,0 +1,39 @@
+schema_version: 1
+id: subenum
+name: SubEnum
+plugin_version: "1.0.0"
+stage: subdomains
+description: "Fast multi-source subdomain enumeration orchestrator by bing0o"
+author: "bing0o"
+
+binary:
+  name: subenum
+  check_args: ["-v"]
+  version_regex: '([0-9]{4}-[0-9]{2}-[0-9]{2})'
+
+inputs:
+  - name: target
+    type: TargetDomain
+    required: true
+    source: param
+
+outputs:
+  - name: subdomains
+    type: FQDN
+    format: text_lines
+    filename: subdomains.txt
+
+execution:
+  command: subenum
+  args:
+    - "-d"
+    - "{inputs.target}"
+    - "-s"
+    - "-o"
+    - "{outputs.subdomains}"
+  timeout_seconds: 600
+  retry_count: 1
+
+cache:
+  policy: fresh
+  default_ttl_hours: 24

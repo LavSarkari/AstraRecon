@@ -1,0 +1,42 @@
+schema_version: 1
+id: dnsx
+name: DNSX
+plugin_version: "1.0.0"
+stage: dns
+description: "Fast and multi-purpose DNS toolkit for resolution and probing"
+author: "ProjectDiscovery"
+
+binary:
+  name: dnsx
+  check_args: ["-version"]
+  version_regex: 'v([0-9]+\.[0-9]+(\.[0-9]+)?)'
+  install_recipe:
+    method: "pdtm"
+    repo: "projectdiscovery/dnsx"
+
+inputs:
+  - name: hosts
+    type: FQDN
+    required: true
+    source: artifact
+
+outputs:
+  - name: valid_hosts
+    type: FQDN
+    format: text_lines
+    filename: resolved_hosts.txt
+
+execution:
+  command: dnsx
+  args:
+    - "-l"
+    - "{inputs.hosts}"
+    - "-silent"
+    - "-o"
+    - "{outputs.valid_hosts}"
+  timeout_seconds: 600
+  retry_count: 1
+
+cache:
+  policy: fresh
+  default_ttl_hours: 12

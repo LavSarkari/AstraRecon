@@ -1,0 +1,43 @@
+schema_version: 1
+id: httpx
+name: HTTPX
+plugin_version: "1.0.0"
+stage: live_hosts
+description: "Fast and multi-purpose HTTP toolkit for probing live web servers"
+author: "ProjectDiscovery"
+
+binary:
+  name: httpx
+  check_args: ["-version"]
+  version_regex: 'v([0-9]+\.[0-9]+(\.[0-9]+)?)'
+  install_recipe:
+    method: "pdtm"
+    repo: "projectdiscovery/httpx"
+
+inputs:
+  - name: targets
+    type: FQDN
+    required: true
+    source: artifact
+
+outputs:
+  - name: endpoints
+    type: HTTPUrl
+    format: jsonl
+    filename: live_hosts.jsonl
+
+execution:
+  command: httpx
+  args:
+    - "-l"
+    - "{inputs.targets}"
+    - "-silent"
+    - "-json"
+    - "-o"
+    - "{outputs.endpoints}"
+  timeout_seconds: 600
+  retry_count: 1
+
+cache:
+  policy: fresh
+  default_ttl_hours: 12

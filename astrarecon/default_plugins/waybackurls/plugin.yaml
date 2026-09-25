@@ -1,0 +1,35 @@
+schema_version: 1
+id: waybackurls
+name: Waybackurls
+plugin_version: "1.0.0"
+stage: crawling
+description: "Fetch URLs that Wayback Machine knows about for a domain"
+author: "tomnomnom"
+
+binary:
+  name: waybackurls
+  check_args: ["-h"]
+  version_regex: 'waybackurls'
+
+inputs:
+  - name: target
+    type: TargetDomain
+    required: true
+    source: stdin
+
+outputs:
+  - name: urls
+    type: HTTPUrl
+    format: text_lines
+    filename: urls.txt
+
+execution:
+  command: waybackurls
+  args:
+    - "{inputs.target}"
+  timeout_seconds: 600
+  retry_count: 1
+
+cache:
+  policy: fresh
+  default_ttl_hours: 24

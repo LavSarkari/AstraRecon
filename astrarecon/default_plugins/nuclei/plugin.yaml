@@ -1,0 +1,40 @@
+schema_version: 1
+id: nuclei
+name: Nuclei
+plugin_version: "1.0.0"
+stage: vulns
+description: "Fast and customizable vulnerability scanner based on simple YAML DSL"
+author: "ProjectDiscovery"
+
+binary:
+  name: nuclei
+  check_args: ["-version"]
+  version_regex: 'v([0-9]+\.[0-9]+(\.[0-9]+)?)'
+
+inputs:
+  - name: targets
+    type: HTTPUrl
+    required: true
+    source: artifact
+
+outputs:
+  - name: findings
+    type: Finding
+    format: jsonl
+    filename: nuclei_findings.jsonl
+
+execution:
+  command: nuclei
+  args:
+    - "-list"
+    - "{inputs.targets}"
+    - "-silent"
+    - "-j"
+    - "-o"
+    - "{outputs.findings}"
+  timeout_seconds: 1200
+  retry_count: 0
+
+cache:
+  policy: none
+  default_ttl_hours: 0

@@ -1,0 +1,43 @@
+schema_version: 1
+id: subfinder
+name: Subfinder
+plugin_version: "1.0.0"
+stage: subdomains
+description: "Fast passive subdomain enumeration tool"
+author: "ProjectDiscovery"
+
+binary:
+  name: subfinder
+  check_args: ["-version"]
+  version_regex: 'v([0-9]+\.[0-9]+(\.[0-9]+)?)'
+  install_recipe:
+    method: "pdtm"
+    repo: "projectdiscovery/subfinder"
+
+inputs:
+  - name: target
+    type: TargetDomain
+    required: true
+    source: param
+
+outputs:
+  - name: subdomains
+    type: FQDN
+    format: text_lines
+    filename: subdomains.txt
+
+execution:
+  command: subfinder
+  args:
+    - "-d"
+    - "{inputs.target}"
+    - "-silent"
+    - "-all"
+    - "-o"
+    - "{outputs.subdomains}"
+  timeout_seconds: 600
+  retry_count: 1
+
+cache:
+  policy: fresh
+  default_ttl_hours: 24

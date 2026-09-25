@@ -1,0 +1,39 @@
+schema_version: 1
+id: naabu
+name: Naabu
+plugin_version: "1.0.0"
+stage: ports
+description: "Fast port scanner focused on reliability and simplicity"
+author: "ProjectDiscovery"
+
+binary:
+  name: naabu
+  check_args: ["-version"]
+  version_regex: 'v([0-9]+\.[0-9]+(\.[0-9]+)?)'
+
+inputs:
+  - name: hosts
+    type: FQDN
+    required: true
+    source: artifact
+
+outputs:
+  - name: ports
+    type: PortService
+    format: text_lines
+    filename: open_ports.txt
+
+execution:
+  command: naabu
+  args:
+    - "-l"
+    - "{inputs.hosts}"
+    - "-silent"
+    - "-o"
+    - "{outputs.ports}"
+  timeout_seconds: 600
+  retry_count: 1
+
+cache:
+  policy: fresh
+  default_ttl_hours: 6

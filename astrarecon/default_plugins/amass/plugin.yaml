@@ -1,0 +1,40 @@
+schema_version: 1
+id: amass
+name: OWASP Amass
+plugin_version: "1.0.0"
+stage: subdomains
+description: "In-depth DNS enumeration and network mapping engine"
+author: "OWASP"
+
+binary:
+  name: amass
+  check_args: ["version"]
+  version_regex: 'v?([0-9]+\.[0-9]+(\.[0-9]+)?)'
+
+inputs:
+  - name: target
+    type: TargetDomain
+    required: true
+    source: param
+
+outputs:
+  - name: subdomains
+    type: FQDN
+    format: text_lines
+    filename: subdomains.txt
+
+execution:
+  command: amass
+  args:
+    - "enum"
+    - "-passive"
+    - "-d"
+    - "{inputs.target}"
+    - "-o"
+    - "{outputs.subdomains}"
+  timeout_seconds: 900
+  retry_count: 1
+
+cache:
+  policy: fresh
+  default_ttl_hours: 24

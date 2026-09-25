@@ -1,0 +1,39 @@
+schema_version: 1
+id: gau
+name: GetAllUrls (gau)
+plugin_version: "1.0.0"
+stage: crawling
+description: "Fetch known URLs from AlienVault, Wayback Machine, and Common Crawl"
+author: "lc"
+
+binary:
+  name: gau
+  check_args: ["--version"]
+  version_regex: 'v?([0-9]+\.[0-9]+(\.[0-9]+)?)'
+
+inputs:
+  - name: target
+    type: TargetDomain
+    required: true
+    source: param
+
+outputs:
+  - name: urls
+    type: HTTPUrl
+    format: text_lines
+    filename: urls.txt
+
+execution:
+  command: gau
+  args:
+    - "{inputs.target}"
+    - "--threads"
+    - "5"
+    - "-o"
+    - "{outputs.urls}"
+  timeout_seconds: 600
+  retry_count: 1
+
+cache:
+  policy: fresh
+  default_ttl_hours: 24

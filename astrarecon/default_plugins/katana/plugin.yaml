@@ -1,0 +1,41 @@
+schema_version: 1
+id: katana
+name: Katana
+plugin_version: "1.0.0"
+stage: urls
+description: "Next-generation crawling and spidering framework"
+author: "ProjectDiscovery"
+
+binary:
+  name: katana
+  check_args: ["-version"]
+  version_regex: 'v([0-9]+\.[0-9]+(\.[0-9]+)?)'
+
+inputs:
+  - name: endpoints
+    type: HTTPUrl
+    required: true
+    source: artifact
+
+outputs:
+  - name: crawled_urls
+    type: HTTPUrl
+    format: text_lines
+    filename: crawled_urls.txt
+
+execution:
+  command: katana
+  args:
+    - "-list"
+    - "{inputs.endpoints}"
+    - "-silent"
+    - "-d"
+    - "3"
+    - "-o"
+    - "{outputs.crawled_urls}"
+  timeout_seconds: 900
+  retry_count: 1
+
+cache:
+  policy: fresh
+  default_ttl_hours: 24

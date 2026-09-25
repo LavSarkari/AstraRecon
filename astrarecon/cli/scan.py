@@ -16,7 +16,7 @@ from rich.table import Table
 from rich.text import Text
 
 from astrarecon.cli.ui.components import CompletionSummaryView, StatusPanel
-from astrarecon.cli.ui.theme import COLOR_DIVIDER, COLOR_ERROR, COLOR_SECONDARY, COLOR_WARNING, PANEL_BOX
+from astrarecon.cli.ui.theme import COLOR_ACCENT, COLOR_DIVIDER, COLOR_ERROR, COLOR_SECONDARY, COLOR_SUCCESS, COLOR_WARNING, PANEL_BOX
 from astrarecon.core.cache.cas import ContentAddressedStore
 from astrarecon.core.doctor.inspector import EnvironmentInspector
 from astrarecon.core.execution.runner import ExecutionEngine
@@ -24,6 +24,8 @@ from astrarecon.core.models.session import EnvFingerprint, NodeExecutionStatus, 
 from astrarecon.core.models.workflow import EdgeDefinition, NodeDefinition, WorkflowDefinition
 from astrarecon.core.plugins.loader import PluginLoader
 from astrarecon.core.reports.ai_export import AIDistillationEngine
+from astrarecon.core.reports.output_writer import OutputFormat, OutputWriter
+from astrarecon.core.reports.result_renderer import ScanResultLoader, ScanResultsRenderer
 from astrarecon.core.sessions.manager import SessionManager
 from astrarecon.core.validation import check_disk_space, validate_target
 
@@ -32,6 +34,59 @@ app = typer.Typer(
     context_settings={"allow_interspersed_args": True},
 )
 console = Console(legacy_windows=False)
+
+
+def _show_completed_session_results(
+    session_dir: "Path",
+    snapshot: "any",
+    target: str,
+    session_mgr: "SessionManager",
+    con: "Console",
+) -> None:
+    """Renders results for an already-completed session without re-running the engine."""
+    from astrarecon.cli.ui.components import CompletionSummaryView
+    from astrarecon.core.reports.result_renderer import ScanResultLoader, ScanResultsRenderer
+
+    scan_results = ScanResultLoader.load(session_dir=session_dir, target=target)
+
+    # Fallback counts from checkpoints if artifact files not yet present
+    total_subdomains = scan_results.subdomain_count
+    live_hosts = scan_results.live_host_count
+    total_vulns = scan_results.finding_count
+
+    if total_subdomains == 0 and live_hosts == 0:
+        checkpoints = session_mgr.load_checkpoints(session_dir)
+        for cp in checkpoints.values():
+            for port_name, ref in (cp.outputs or {}).items():
+                p = Path(ref.path)
+                if not p.is_file():
+                    continue
+                try:
+                    count = sum(1 for l in p.read_text(encoding="utf-8", errors="ignore").splitlines() if l.strip())
+                except Exception:
+                    count = 0
+                ref_type = str(ref.type).lower()
+                if "domain" in ref_type:
+                    total_subdomains = max(total_subdomains, count)
+                elif "host" in ref_type or "url" in ref_type:
+                    live_hosts = max(live_hosts, count)
+                elif "vuln" in ref_type:
+                    total_vulns += count
+
+    ai_dir = session_dir / "exports" / "ai"
+
+    summary = CompletionSummaryView.render(
+        target=target,
+        duration_seconds=0,
+        session_id=session_dir.name,
+        total_subdomains=total_subdomains,
+        live_hosts=live_hosts,
+        vulnerabilities=total_vulns,
+        ai_bundle_path=str(ai_dir) if ai_dir.exists() else None,
+    )
+    con.print("")
+    con.print(summary)
+    ScanResultsRenderer.render_all(scan_results, limit=True)
 
 
 @app.callback(invoke_without_command=True)
@@ -46,6 +101,9 @@ def run_scan(
     scope_exclude: Optional[str] = typer.Option(None, "--scope-exclude", help="Regex pattern of out-of-scope domains to quarantine"),
     proxy: Optional[str] = typer.Option(None, "--proxy", help="Upstream HTTP/SOCKS5 proxy (e.g. http://127.0.0.1:8080)"),
     header: Optional[list[str]] = typer.Option(None, "--header", "-H", help="Custom HTTP headers to inject into scanners"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save full results to file. Format auto-detected from extension: .json, .md, .csv"),
+    output_format: Optional[str] = typer.Option(None, "--output-format", help="Force output format: json | md | csv"),
+    no_results: bool = typer.Option(False, "--no-results", help="Skip the pretty results table — only show the summary card"),
 ):
     """Launch or resume an automated reconnaissance workflow."""
     if not target and not resume:
@@ -128,7 +186,8 @@ def run_scan(
 
                 cps = session_mgr.load_checkpoints(s_dir)
                 completed_cps = sum(1 for c in cps.values() if c.status == NodeExecutionStatus.COMPLETED)
-                stages_str = f"{completed_cps}/{len(cps) or 7} stages done"
+                total_cps = len(cps) or 7
+                stages_str = f"{completed_cps}/{total_cps} stages done"
 
                 if snap.status == SessionStatus.COMPLETED:
                     status_style = "[green]● Completed[/green]"
@@ -136,22 +195,38 @@ def run_scan(
                     status_style = "[yellow]● In Progress[/yellow]"
                 elif snap.status == SessionStatus.FAILED:
                     status_style = "[red]● Failed[/red]"
+                elif snap.status == SessionStatus.INTERRUPTED:
+                    status_style = "[yellow]● Interrupted[/yellow]"
                 else:
                     status_style = f"[dim]● {snap.status.value.capitalize()}[/dim]"
 
                 table.add_row(Text(f"[{idx}]", style="bold #1DA1FF"), s_dir.name, age, status_style, stages_str)
 
+            # Check whether the latest session is resumable (not fully completed)
+            latest_dir, latest_snap = existing_sessions[0]
+            latest_is_done = latest_snap.status == SessionStatus.COMPLETED
+
             menu_text = Text()
             menu_text.append("\n  Actions:\n", style="bold white")
-            menu_text.append("  [r] ", style="bold #1DA1FF")
-            menu_text.append(f"Resume latest session ({existing_sessions[0][0].name})\n", style="white")
+            if latest_is_done:
+                menu_text.append("  [v] ", style="bold #22C55E")
+                menu_text.append(f"View results for latest session ({latest_dir.name})\n", style="white")
+            else:
+                menu_text.append("  [r] ", style="bold #1DA1FF")
+                menu_text.append(f"Resume latest session ({latest_dir.name})\n", style="white")
             menu_text.append("  [f] ", style="bold #1DA1FF")
             menu_text.append("Start a fresh scan (create new session)\n", style="white")
             if len(existing_sessions) > 1:
                 menu_text.append(f"  [1-{len(existing_sessions[:5])}] ", style="bold #1DA1FF")
-                menu_text.append("Resume a specific session from the list above\n", style="white")
+                menu_text.append("Select a specific session from the list above\n", style="white")
             menu_text.append("  [q] ", style="bold #1DA1FF")
             menu_text.append("Cancel and exit\n", style="white")
+
+            default_action = "v" if latest_is_done else "r"
+            prompt_hint = "v=view results, f=fresh" if latest_is_done else "r=resume, f=fresh"
+            if len(existing_sessions) > 1:
+                prompt_hint += ", 1-N=select"
+            prompt_hint += ", q=quit"
 
             panel = Panel(
                 Group(
@@ -170,8 +245,8 @@ def run_scan(
             if sys.stdin.isatty():
                 try:
                     choice = Prompt.ask(
-                        "[bold #1DA1FF]Select action[/bold #1DA1FF] [r=resume, f=fresh, 1-N=select, q=quit]",
-                        default="r",
+                        f"[bold #1DA1FF]Select action[/bold #1DA1FF] [{prompt_hint}]",
+                        default=default_action,
                         console=console,
                     ).strip().lower()
 
@@ -179,18 +254,37 @@ def run_scan(
                         console.print("[dim]Scan cancelled by user.[/dim]")
                         raise typer.Exit(code=0)
                     elif choice in ("f", "fresh", "new"):
-                        resume = None
+                        resume = None  # Will create a fresh session below
                     elif choice.isdigit() and 1 <= int(choice) <= len(existing_sessions[:5]):
-                        chosen_dir, _ = existing_sessions[int(choice) - 1]
-                        resume = chosen_dir.name
+                        chosen_dir, chosen_snap = existing_sessions[int(choice) - 1]
+                        if chosen_snap.status == SessionStatus.COMPLETED:
+                            # View results for this completed session inline
+                            _show_completed_session_results(chosen_dir, chosen_snap, target, session_mgr, console)
+                            raise typer.Exit(code=0)
+                        else:
+                            resume = chosen_dir.name
+                    elif choice in ("v", "view") and latest_is_done:
+                        # Show results for the completed session without re-running
+                        _show_completed_session_results(latest_dir, latest_snap, target, session_mgr, console)
+                        raise typer.Exit(code=0)
                     else:
-                        resume = existing_sessions[0][0].name
+                        # Default: resume for incomplete, view results for completed
+                        if latest_is_done:
+                            _show_completed_session_results(latest_dir, latest_snap, target, session_mgr, console)
+                            raise typer.Exit(code=0)
+                        else:
+                            resume = latest_dir.name
                 except (KeyboardInterrupt, EOFError):
                     console.print("\n[dim]Scan cancelled by user.[/dim]")
                     raise typer.Exit(code=0)
             else:
-                resume = existing_sessions[0][0].name
-                console.print(f"[dim]Non-interactive environment detected. Resuming latest session: {resume}[/dim]\n")
+                if latest_is_done:
+                    console.print(f"[dim]Non-interactive mode: session {latest_dir.name} already completed. Use --fresh to start a new scan.[/dim]\n")
+                    _show_completed_session_results(latest_dir, latest_snap, target, session_mgr, console)
+                    raise typer.Exit(code=0)
+                else:
+                    resume = latest_dir.name
+                    console.print(f"[dim]Non-interactive environment detected. Resuming latest session: {resume}[/dim]\n")
 
     if resume:
         session_dir = session_mgr.base_dir / resume
@@ -256,7 +350,12 @@ def run_scan(
         for nid, cp in existing_cps.items():
             if cp.status == NodeExecutionStatus.COMPLETED:
                 cnt = sum(ref.line_count or 0 for ref in cp.outputs.values())
-                status_panel.update_status(nid, NodeExecutionStatus.COMPLETED, item_count=cnt if cnt > 0 else None)
+                status_panel.update_status(
+                    nid,
+                    NodeExecutionStatus.COMPLETED,
+                    item_count=cnt if cnt > 0 else None,
+                    duration=cp.duration_seconds,
+                )
 
     start_time = time.time()
 
@@ -319,32 +418,37 @@ def run_scan(
             console.print(f"[yellow]To resume execution, run: astrarecon scan {target} --resume {session_dir.name}[/yellow]\n")
             raise typer.Exit(code=1)
 
-    # Count discovered items dynamically from checkpoint outputs and their DataType ontology
-    total_subdomains = 0
-    live_hosts = 0
-    total_vulns = 0
+    # -----------------------------------------------------------------------
+    # Load real scan results from artifact files
+    # -----------------------------------------------------------------------
+    scan_results = ScanResultLoader.load(session_dir=session_dir, target=target)
 
-    checkpoints = session_mgr.load_checkpoints(session_dir)
-    for cp in checkpoints.values():
-        if cp.outputs:
-            for port_name, ref in cp.outputs.items():
-                p = Path(ref.path)
-                if not p.is_file():
-                    continue
-                count = 0
-                try:
-                    with open(p, "r", encoding="utf-8", errors="ignore") as fp:
-                        count = sum(1 for line in fp if line.strip())
-                except Exception:
-                    continue
+    # Count metrics from real data for the summary card
+    total_subdomains = scan_results.subdomain_count
+    live_hosts = scan_results.live_host_count
+    total_vulns = scan_results.finding_count
 
-                ref_type = str(ref.type).lower()
-                if "domain" in ref_type:
-                    total_subdomains = max(total_subdomains, count)
-                elif "host" in ref_type or "url" in ref_type:
-                    live_hosts = max(live_hosts, count)
-                elif "vuln" in ref_type:
-                    total_vulns += count
+    # Fallback: if artifacts dir is empty (e.g. dry run), count from checkpoints
+    if total_subdomains == 0 and live_hosts == 0:
+        checkpoints = session_mgr.load_checkpoints(session_dir)
+        for cp in checkpoints.values():
+            if cp.outputs:
+                for port_name, ref in cp.outputs.items():
+                    p = Path(ref.path)
+                    if not p.is_file():
+                        continue
+                    try:
+                        with open(p, "r", encoding="utf-8", errors="ignore") as _fp:
+                            count = sum(1 for line in _fp if line.strip())
+                    except Exception:
+                        continue
+                    ref_type = str(ref.type).lower()
+                    if "domain" in ref_type:
+                        total_subdomains = max(total_subdomains, count)
+                    elif "host" in ref_type or "url" in ref_type:
+                        live_hosts = max(live_hosts, count)
+                    elif "vuln" in ref_type:
+                        total_vulns += count
 
     # AI distillation export bundle
     ai_dir = None
@@ -357,7 +461,9 @@ def run_scan(
     except Exception:
         pass
 
-    # Render Post-Scan Completion Summary
+    # -----------------------------------------------------------------------
+    # Render Post-Scan Completion Summary card
+    # -----------------------------------------------------------------------
     duration = time.time() - start_time
     summary_panel = CompletionSummaryView.render(
         target=target,
@@ -370,3 +476,35 @@ def run_scan(
     )
     console.print("")
     console.print(summary_panel)
+
+    # -----------------------------------------------------------------------
+    # Pretty Results Tables (subdomains, live hosts, findings)
+    # -----------------------------------------------------------------------
+    if not no_results:
+        ScanResultsRenderer.render_all(scan_results, limit=True)
+
+    # -----------------------------------------------------------------------
+    # --output: write full results to file
+    # -----------------------------------------------------------------------
+    if output:
+        fmt: OutputFormat | None = None
+        if output_format:
+            try:
+                fmt = OutputFormat(output_format.lower().lstrip("."))
+            except ValueError:
+                console.print(
+                    f"[bold {COLOR_ERROR}]Error:[/bold {COLOR_ERROR}] Unknown output format "
+                    f"'[bold]{output_format}[/bold]'. Valid options: json, md, csv"
+                )
+                raise typer.Exit(code=1)
+
+        try:
+            written_path = OutputWriter.write(scan_results, output, fmt)
+            console.print(
+                f"  [{COLOR_SUCCESS}]✔[/{COLOR_SUCCESS}] Results saved → "
+                f"[bold {COLOR_ACCENT}]{written_path}[/bold {COLOR_ACCENT}]  "
+                f"[dim]({total_subdomains} subdomains · {live_hosts} hosts · {total_vulns} findings)[/dim]\n"
+            )
+        except Exception as e:
+            console.print(f"[bold {COLOR_ERROR}]Error writing output file:[/bold {COLOR_ERROR}] {e}\n")
+            raise typer.Exit(code=1)

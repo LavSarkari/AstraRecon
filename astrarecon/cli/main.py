@@ -27,10 +27,12 @@ if managed_bin.exists():
 
 from astrarecon import __version__
 from astrarecon.cli.doctor import app as doctor_app
+from astrarecon.cli.export import app as export_app
 from astrarecon.cli.sessions import app as sessions_app
 from astrarecon.cli.cache import app as cache_app
 from astrarecon.cli.plugins import app as plugins_app
 from astrarecon.cli.scan import app as scan_app
+from astrarecon.cli.update import app as update_app
 
 app = typer.Typer(
     name="astrarecon",
@@ -45,6 +47,8 @@ app.add_typer(doctor_app, name="doctor")
 app.add_typer(sessions_app, name="sessions")
 app.add_typer(plugins_app, name="plugins")
 app.add_typer(cache_app, name="cache")
+app.add_typer(export_app, name="export")
+app.add_typer(update_app, name="update")
 
 
 def version_callback(value: bool):

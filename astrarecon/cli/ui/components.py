@@ -386,6 +386,7 @@ class StatusPanel:
         status: NodeExecutionStatus | str,
         item_count: Optional[int] = None,
         message: Optional[str] = None,
+        duration: Optional[float] = None,
     ):
         """Updates internal status, timestamps, item yields, and notices for a given node."""
         status_key = status.value if hasattr(status, "value") else str(status).upper()
@@ -395,14 +396,20 @@ class StatusPanel:
             self.start_times[node_id] = time.time()
         elif status_key in ("COMPLETED", "SUCCESS"):
             self.node_statuses[node_id] = "SUCCESS"
-            if node_id in self.start_times:
+            if duration is not None:
+                self.node_durations[node_id] = duration
+            elif node_id in self.start_times:
                 self.node_durations[node_id] = time.time() - self.start_times[node_id]
         elif status_key == "FAILED":
             self.node_statuses[node_id] = "FAILED"
-            if node_id in self.start_times:
+            if duration is not None:
+                self.node_durations[node_id] = duration
+            elif node_id in self.start_times:
                 self.node_durations[node_id] = time.time() - self.start_times[node_id]
         elif status_key == "CACHED":
             self.node_statuses[node_id] = "CACHED"
+            if duration is not None:
+                self.node_durations[node_id] = duration
         elif status_key == "SKIPPED":
             self.node_statuses[node_id] = "SKIPPED"
         elif status_key == "RETRY":
@@ -460,10 +467,11 @@ class StatusPanel:
                 active_running_nodes.append((display_name, nid))
                 icon = live_spinner
                 color = COLOR_ACCENT
-                cur_dur = time.time() - self.start_times.get(nid, time.time())
+                node_start = self.start_times.get(nid)
+                cur_dur = (time.time() - node_start) if node_start is not None else 0.0
                 dur_str = f"{cur_dur:.1f}s"
                 status_label = "Running"
-                items_str = "in progress"
+                items_str = ""
                 items_style = f"dim {COLOR_SECONDARY}"
                 name_style = f"bold {COLOR_PRIMARY}"
             elif state in ("SUCCESS", "COMPLETED"):

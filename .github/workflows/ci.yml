@@ -8,12 +8,11 @@ on:
 
 jobs:
   test:
-    name: Test (Python ${{ matrix.python-version }} on ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
         python-version: ["3.11", "3.12"]
 
     steps:
@@ -24,13 +23,18 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
+          cache: pip
 
-      - name: Install dependencies
+      - name: Install package and dev dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
-      - name: Run Test Suite
-        run: |
-          pytest -v
+      - name: Run test suite
+        run: pytest -v
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Verify distributions
+        run: python -m twine check dist/*

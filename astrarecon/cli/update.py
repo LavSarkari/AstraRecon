@@ -81,9 +81,15 @@ def check_and_prompt_update() -> None:
     if os.environ.get("ASTRARECON_NO_UPDATE_CHECK", "").lower() in ("1", "true", "yes"):
         return
 
-    # Skip if running update or version command
+    # Skip if running update, help, or version command, or opt-out flag passed
     argv = sys.argv[1:]
-    if any(arg in ("update", "--version", "-v", "--no-update-check") for arg in argv):
+    if argv and argv[0] == "update":
+        return
+    if "--no-update-check" in argv:
+        return
+    if "--version" in argv or argv == ["-v"]:
+        return
+    if "--help" in argv or "-h" in argv:
         return
 
     cache_file = Path.home() / ".astrarecon" / "update_check.json"

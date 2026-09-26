@@ -12,6 +12,9 @@ jobs:
   build-and-publish:
     name: Build package and publish to PyPI
     runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/astrarecon
     permissions:
       id-token: write # Mandatory for PyPI Trusted Publishing
 
@@ -41,3 +44,4 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
+          password: ${{ secrets.PYPI_API_TOKEN }}

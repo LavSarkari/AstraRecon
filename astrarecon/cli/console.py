@@ -478,6 +478,7 @@ def run_console():
             from prompt_toolkit.formatted_text import FormattedText
             from prompt_toolkit.history import FileHistory
             from prompt_toolkit.output import create_output
+            from prompt_toolkit.renderer import CPR_Support
 
             history_file = Path.home() / ".astrarecon" / "console_history"
             history_file.parent.mkdir(parents=True, exist_ok=True)
@@ -490,6 +491,9 @@ def run_console():
                 reserve_space_for_menu=0,
                 output=output,
             )
+            # Explicitly mark CPR as unsupported so prompt_toolkit renders prompt on frame 0 immediately
+            if hasattr(session.app, "renderer"):
+                session.app.renderer.cpr_support = CPR_Support.NOT_SUPPORTED
             has_pt = sys.stdin.isatty()
         except Exception:
             has_pt = False

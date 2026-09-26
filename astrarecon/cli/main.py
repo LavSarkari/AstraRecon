@@ -17,6 +17,9 @@ if hasattr(sys.stderr, "reconfigure"):
 import os
 from pathlib import Path
 
+# Disable CPR (Cursor Position Request) to prevent CPR warnings and line miscalculations on Windows Terminal/WSL
+os.environ.setdefault("PROMPT_TOOLKIT_NO_CPR", "1")
+
 # Automatically ensure ~/.astrarecon/bin is in PATH for all subcommands and tool runners
 managed_bin = Path.home() / ".astrarecon" / "bin"
 if managed_bin.exists():

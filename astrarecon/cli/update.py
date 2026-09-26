@@ -43,6 +43,37 @@ def _fetch_latest_pypi_version() -> Optional[str]:
         return None
 
 
+import shutil
+
+
+def _run_install(install_target: str, force: bool = False) -> subprocess.CompletedProcess:
+    """Executes the package installation using uv, pipx, or pip depending on the environment."""
+    uv_bin = shutil.which("uv")
+    pipx_bin = shutil.which("pipx")
+
+    # If installed via uv tool or uv environment
+    if "uv/tools" in sys.executable.replace("\\", "/") and uv_bin:
+        cmd = [uv_bin, "tool", "install", install_target, "--reinstall"]
+        return _run(cmd)
+
+    if uv_bin:
+        cmd = [uv_bin, "pip", "install", "--python", sys.executable, "--upgrade", install_target]
+        if force:
+            cmd.append("--reinstall")
+        return _run(cmd)
+
+    # If pipx environment
+    if "pipx" in sys.executable.lower() and pipx_bin:
+        cmd = [pipx_bin, "install", "--force", install_target]
+        return _run(cmd)
+
+    # Standard pip fallback
+    cmd = [sys.executable, "-m", "pip", "install", "--upgrade", install_target]
+    if force:
+        cmd.append("--force-reinstall")
+    return _run(cmd)
+
+
 def _run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, check=check)
 
@@ -106,13 +137,13 @@ def update(
         console.print(f"  [dim]Installing from GitHub…[/dim]\n")
 
         try:
-            result = _run([sys.executable, "-m", "pip", "install", "--upgrade", install_target])
+            result = _run_install(install_target, force=force)
             console.print(f"  [{COLOR_SUCCESS}]✔[/{COLOR_SUCCESS}] Updated from GitHub main branch.\n")
             if result.stdout:
                 for line in result.stdout.strip().splitlines()[-5:]:
                     console.print(f"  [dim]{line}[/dim]")
         except subprocess.CalledProcessError as e:
-            console.print(f"\n  [bold {COLOR_ERROR}]✖ Update failed:[/bold {COLOR_ERROR}] pip returned exit code {e.returncode}")
+            console.print(f"\n  [bold {COLOR_ERROR}]✖ Update failed:[/bold {COLOR_ERROR}] installer returned exit code {e.returncode}")
             if e.stderr:
                 for line in e.stderr.strip().splitlines()[-8:]:
                     console.print(f"  [dim {COLOR_ERROR}]{line}[/dim {COLOR_ERROR}]")
@@ -172,11 +203,7 @@ def update(
     console.print(f"\n  [dim]Installing astrarecon=={latest} from PyPI…[/dim]\n")
 
     try:
-        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", f"astrarecon=={latest}"]
-        if force and latest_t <= current_t:
-            cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall", f"astrarecon=={latest}"]
-
-        result = _run(cmd)
+        result = _run_install(f"astrarecon=={latest}", force=force and latest_t <= current_t)
         console.print(f"  [{COLOR_SUCCESS}]✔[/{COLOR_SUCCESS}] Updated to [bold {COLOR_SUCCESS}]{latest}[/bold {COLOR_SUCCESS}] successfully.\n")
         console.print(
             f"  [dim]Restart your shell or run [bold]hash -r[/bold] if the command is cached.[/dim]\n"
@@ -186,12 +213,12 @@ def update(
                 console.print(f"  [dim]{line}[/dim]")
 
     except subprocess.CalledProcessError as e:
-        console.print(f"\n  [bold {COLOR_ERROR}]✖ Update failed:[/bold {COLOR_ERROR}] pip returned exit code {e.returncode}")
+        console.print(f"\n  [bold {COLOR_ERROR}]✖ Update failed:[/bold {COLOR_ERROR}] installer returned exit code {e.returncode}")
         if e.stderr:
             for line in e.stderr.strip().splitlines()[-8:]:
                 console.print(f"  [dim {COLOR_ERROR}]{line}[/dim {COLOR_ERROR}]")
         console.print(
-            f"\n  [dim]Try manually: [bold]pip install --upgrade astrarecon[/bold][/dim]\n"
+            f"\n  [dim]Try manually: [bold]uv tool install astrarecon --reinstall[/bold] or [bold]pip install --upgrade astrarecon[/bold][/dim]\n"
         )
         raise typer.Exit(code=1)
 

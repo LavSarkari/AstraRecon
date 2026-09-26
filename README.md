@@ -288,6 +288,21 @@ astrarecon scan example.com --output data.csv
 astrarecon scan example.com --no-results
 ```
 
+### Tool Selection & Dynamic Filtering
+
+Easily customize which security tools run during a scan without altering workflow definitions:
+
+```bash
+# Include extra tools in your scan (e.g. registered custom tools)
+astrarecon scan example.com --with findomain --with dalfox
+
+# Skip specific tools (e.g. omit heavyweight active scanners or slow tools)
+astrarecon scan example.com --skip amass --skip gau
+
+# Run only an exact list of tools
+astrarecon scan example.com --tools subfinder,dnsx,httpx,nuclei
+```
+
 ---
 
 ## Session Management
@@ -316,6 +331,49 @@ astrarecon sessions delete <session-id>
 # Prune sessions older than N days or delete failed/interrupted runs
 astrarecon sessions prune --days 7
 astrarecon sessions prune --failed-only
+```
+
+---
+
+## Adding Custom Tools & Plugins
+
+AstraRecon allows you to integrate any CLI security tool in seconds **without writing YAML files or modifying code**.
+
+### Add a New Tool via CLI
+
+Use `astrarecon plugins add <name>` with the `--cmd` flag and smart placeholders (`{target}`, `{output}`, `{hosts}`, `{endpoints}`):
+
+```bash
+# Add Findomain for fast subdomain discovery
+astrarecon plugins add findomain \
+  --stage subdomains \
+  --cmd "findomain -t {target} -u {output}" \
+  --desc "Fastest subdomain enumerator"
+
+# Add Masscan for ultra-fast port scanning
+astrarecon plugins add masscan \
+  --stage ports \
+  --cmd "masscan -iL {hosts} -p1-65535 --rate 1000 -oG {output}" \
+  --desc "High-speed TCP port scanner"
+
+# Add Dalfox for XSS scanning
+astrarecon plugins add dalfox \
+  --stage vulns \
+  --cmd "dalfox file {endpoints} -o {output} --format json" \
+  --desc "Parameter analysis and XSS scanner"
+```
+
+### Inspect and Remove Custom Tools
+
+```bash
+# List all installed plugins (built-in and custom)
+astrarecon plugins list
+
+# Inspect the generated YAML manifest
+astrarecon plugins show findomain
+
+# Remove a custom tool
+astrarecon plugins remove findomain
 ```
 
 ---

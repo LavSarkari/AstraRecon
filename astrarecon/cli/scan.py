@@ -94,103 +94,281 @@ def build_workflow(
     preset: str = "default",
     scope_include: Optional[str] = None,
     scope_exclude: Optional[str] = None,
+    with_tools: Optional[list[str]] = None,
+    skip_tools: Optional[list[str]] = None,
+    custom_tools: Optional[list[str]] = None,
 ) -> WorkflowDefinition:
-    """Builds a comprehensive or preset-specific WorkflowDefinition DAG."""
+    """Builds a comprehensive or preset-specific WorkflowDefinition DAG with dynamic tool injection."""
     preset = (preset or "default").lower().strip()
     scope = WorkflowScope(
         auto_enforce_root=True,
         include_patterns=[scope_include] if scope_include else [],
         exclude_patterns=[scope_exclude] if scope_exclude else [],
     )
+    plugin_registry = PluginLoader.load_all_plugins()
 
-    if preset == "fast":
+    if custom_tools:
+        # Dynamic customized workflow with only specified tools
         nodes = [
             NodeDefinition(id="target_input", type="builtin.target_input", config={"raw_input": target}),
             NodeDefinition(id="scope_guard", type="builtin.scope_guard", config={}),
-            NodeDefinition(id="subfinder", type="plugin.subfinder", config={}),
-            NodeDefinition(id="dnsx", type="plugin.dnsx", config={}),
-            NodeDefinition(id="httpx", type="plugin.httpx", config={}),
         ]
         edges = [
             EdgeDefinition(source="target_input", source_port="output", target="scope_guard", target_port="input"),
-            EdgeDefinition(source="scope_guard", source_port="in_scope", target="subfinder", target_port="target"),
-            EdgeDefinition(source="subfinder", source_port="subdomains", target="dnsx", target_port="hosts"),
-            EdgeDefinition(source="dnsx", source_port="valid_hosts", target="httpx", target_port="targets"),
         ]
-        wf_name = f"Fast recon for {target}"
 
-    elif preset == "passive":
-        nodes = [
-            NodeDefinition(id="target_input", type="builtin.target_input", config={"raw_input": target}),
-            NodeDefinition(id="scope_guard", type="builtin.scope_guard", config={}),
-            NodeDefinition(id="subfinder", type="plugin.subfinder", config={}),
-            NodeDefinition(id="assetfinder", type="plugin.assetfinder", config={}),
-            NodeDefinition(id="amass", type="plugin.amass", config={}),
-            NodeDefinition(id="union_dedupe", type="builtin.union_dedupe", config={}),
-            NodeDefinition(id="gau", type="plugin.gau", config={}),
-        ]
-        edges = [
-            EdgeDefinition(source="target_input", source_port="output", target="scope_guard", target_port="input"),
-            EdgeDefinition(source="scope_guard", source_port="in_scope", target="subfinder", target_port="target"),
-            EdgeDefinition(source="scope_guard", source_port="in_scope", target="assetfinder", target_port="target"),
-            EdgeDefinition(source="scope_guard", source_port="in_scope", target="amass", target_port="target"),
-            EdgeDefinition(source="scope_guard", source_port="in_scope", target="gau", target_port="target"),
-            EdgeDefinition(source="subfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
-            EdgeDefinition(source="assetfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
-            EdgeDefinition(source="amass", source_port="subdomains", target="union_dedupe", target_port="inputs"),
-        ]
-        wf_name = f"Passive recon for {target}"
+        sub_tools = []
+        dns_tools = []
+        port_tools = []
+        live_tools = []
+        crawl_tools = []
+        vuln_tools = []
+        other_tools = []
 
-    elif preset == "vuln":
-        nodes = [
-            NodeDefinition(id="target_input", type="builtin.target_input", config={"raw_input": target}),
-            NodeDefinition(id="scope_guard", type="builtin.scope_guard", config={}),
-            NodeDefinition(id="subfinder", type="plugin.subfinder", config={}),
-            NodeDefinition(id="dnsx", type="plugin.dnsx", config={}),
-            NodeDefinition(id="httpx", type="plugin.httpx", config={}),
-            NodeDefinition(id="nuclei", type="plugin.nuclei", config={}),
-        ]
-        edges = [
-            EdgeDefinition(source="target_input", source_port="output", target="scope_guard", target_port="input"),
-            EdgeDefinition(source="scope_guard", source_port="in_scope", target="subfinder", target_port="target"),
-            EdgeDefinition(source="subfinder", source_port="subdomains", target="dnsx", target_port="hosts"),
-            EdgeDefinition(source="dnsx", source_port="valid_hosts", target="httpx", target_port="targets"),
-            EdgeDefinition(source="httpx", source_port="endpoints", target="nuclei", target_port="targets"),
-        ]
-        wf_name = f"Vulnerability assessment for {target}"
+        for t_name in custom_tools:
+            manifest = plugin_registry.get(t_name)
+            stage = manifest.stage.lower() if manifest else "custom"
+            if stage == "subdomains":
+                sub_tools.append(t_name)
+            elif stage == "dns":
+                dns_tools.append(t_name)
+            elif stage == "ports":
+                port_tools.append(t_name)
+            elif stage in ("live_hosts", "probing"):
+                live_tools.append(t_name)
+            elif stage in ("crawling", "urls"):
+                crawl_tools.append(t_name)
+            elif stage in ("vulns", "xss"):
+                vuln_tools.append(t_name)
+            else:
+                other_tools.append(t_name)
+
+        # Wire subdomain tools
+        sub_outputs = []
+        for st in sub_tools:
+            m = plugin_registry.get(st)
+            in_port = m.inputs[0].name if m and m.inputs else "target"
+            out_port = m.outputs[0].name if m and m.outputs else "subdomains"
+            nodes.append(NodeDefinition(id=st, type=f"plugin.{st}", config={}))
+            edges.append(EdgeDefinition(source="scope_guard", source_port="in_scope", target=st, target_port=in_port))
+            sub_outputs.append((st, out_port))
+
+        last_domain_source = "scope_guard"
+        last_domain_port = "in_scope"
+
+        if len(sub_outputs) > 1:
+            nodes.append(NodeDefinition(id="union_dedupe", type="builtin.union_dedupe", config={}))
+            for src_id, src_p in sub_outputs:
+                edges.append(EdgeDefinition(source=src_id, source_port=src_p, target="union_dedupe", target_port="inputs"))
+            last_domain_source = "union_dedupe"
+            last_domain_port = "output"
+        elif len(sub_outputs) == 1:
+            last_domain_source = sub_outputs[0][0]
+            last_domain_port = sub_outputs[0][1]
+
+        # Wire DNS tools
+        last_host_source = last_domain_source
+        last_host_port = last_domain_port
+        for dt in dns_tools:
+            m = plugin_registry.get(dt)
+            in_port = m.inputs[0].name if m and m.inputs else "hosts"
+            out_port = m.outputs[0].name if m and m.outputs else "valid_hosts"
+            nodes.append(NodeDefinition(id=dt, type=f"plugin.{dt}", config={}))
+            edges.append(EdgeDefinition(source=last_domain_source, source_port=last_domain_port, target=dt, target_port=in_port))
+            last_host_source = dt
+            last_host_port = out_port
+
+        # Wire Port scanning tools
+        for pt in port_tools:
+            m = plugin_registry.get(pt)
+            in_port = m.inputs[0].name if m and m.inputs else "hosts"
+            nodes.append(NodeDefinition(id=pt, type=f"plugin.{pt}", config={}))
+            edges.append(EdgeDefinition(source=last_host_source, source_port=last_host_port, target=pt, target_port=in_port))
+
+        # Wire Live host probing tools
+        last_endpoint_source = None
+        last_endpoint_port = None
+        for lt in live_tools:
+            m = plugin_registry.get(lt)
+            in_port = m.inputs[0].name if m and m.inputs else "targets"
+            out_port = m.outputs[0].name if m and m.outputs else "endpoints"
+            nodes.append(NodeDefinition(id=lt, type=f"plugin.{lt}", config={}))
+            edges.append(EdgeDefinition(source=last_host_source, source_port=last_host_port, target=lt, target_port=in_port))
+            last_endpoint_source = lt
+            last_endpoint_port = out_port
+
+        # Wire Crawling / URL tools
+        for ct in crawl_tools:
+            m = plugin_registry.get(ct)
+            in_port = m.inputs[0].name if m and m.inputs else "endpoints"
+            in_source = m.inputs[0].source if m and m.inputs else "artifact"
+            nodes.append(NodeDefinition(id=ct, type=f"plugin.{ct}", config={}))
+            if in_source == "param":
+                edges.append(EdgeDefinition(source="scope_guard", source_port="in_scope", target=ct, target_port=in_port))
+            elif last_endpoint_source:
+                edges.append(EdgeDefinition(source=last_endpoint_source, source_port=last_endpoint_port, target=ct, target_port=in_port))
+            else:
+                edges.append(EdgeDefinition(source=last_host_source, source_port=last_host_port, target=ct, target_port=in_port))
+
+        # Wire Vulnerability scanning tools
+        for vt in vuln_tools:
+            m = plugin_registry.get(vt)
+            in_port = m.inputs[0].name if m and m.inputs else "targets"
+            nodes.append(NodeDefinition(id=vt, type=f"plugin.{vt}", config={}))
+            if last_endpoint_source:
+                edges.append(EdgeDefinition(source=last_endpoint_source, source_port=last_endpoint_port, target=vt, target_port=in_port))
+            else:
+                edges.append(EdgeDefinition(source=last_host_source, source_port=last_host_port, target=vt, target_port=in_port))
+
+        # Wire any other custom tools
+        for ot in other_tools:
+            m = plugin_registry.get(ot)
+            in_port = m.inputs[0].name if m and m.inputs else "input"
+            in_source = m.inputs[0].source if m and m.inputs else "artifact"
+            nodes.append(NodeDefinition(id=ot, type=f"plugin.{ot}", config={}))
+            if in_source == "param":
+                edges.append(EdgeDefinition(source="scope_guard", source_port="in_scope", target=ot, target_port=in_port))
+            elif last_endpoint_source:
+                edges.append(EdgeDefinition(source=last_endpoint_source, source_port=last_endpoint_port, target=ot, target_port=in_port))
+            else:
+                edges.append(EdgeDefinition(source=last_host_source, source_port=last_host_port, target=ot, target_port=in_port))
+
+        wf_name = f"Custom scan ({','.join(custom_tools)}) for {target}"
 
     else:
-        # Default / Full comprehensive reconnaissance & vulnerability pipeline
-        nodes = [
-            NodeDefinition(id="target_input", type="builtin.target_input", config={"raw_input": target}),
-            NodeDefinition(id="scope_guard", type="builtin.scope_guard", config={}),
-            NodeDefinition(id="subfinder", type="plugin.subfinder", config={}),
-            NodeDefinition(id="assetfinder", type="plugin.assetfinder", config={}),
-            NodeDefinition(id="amass", type="plugin.amass", config={}),
-            NodeDefinition(id="union_dedupe", type="builtin.union_dedupe", config={}),
-            NodeDefinition(id="dnsx", type="plugin.dnsx", config={}),
-            NodeDefinition(id="naabu", type="plugin.naabu", config={}),
-            NodeDefinition(id="httpx", type="plugin.httpx", config={}),
-            NodeDefinition(id="gau", type="plugin.gau", config={}),
-            NodeDefinition(id="katana", type="plugin.katana", config={}),
-            NodeDefinition(id="nuclei", type="plugin.nuclei", config={}),
-        ]
-        edges = [
-            EdgeDefinition(source="target_input", source_port="output", target="scope_guard", target_port="input"),
-            EdgeDefinition(source="scope_guard", source_port="in_scope", target="subfinder", target_port="target"),
-            EdgeDefinition(source="scope_guard", source_port="in_scope", target="assetfinder", target_port="target"),
-            EdgeDefinition(source="scope_guard", source_port="in_scope", target="amass", target_port="target"),
-            EdgeDefinition(source="subfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
-            EdgeDefinition(source="assetfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
-            EdgeDefinition(source="amass", source_port="subdomains", target="union_dedupe", target_port="inputs"),
-            EdgeDefinition(source="union_dedupe", source_port="output", target="dnsx", target_port="hosts"),
-            EdgeDefinition(source="dnsx", source_port="valid_hosts", target="naabu", target_port="hosts"),
-            EdgeDefinition(source="dnsx", source_port="valid_hosts", target="httpx", target_port="targets"),
-            EdgeDefinition(source="scope_guard", source_port="in_scope", target="gau", target_port="target"),
-            EdgeDefinition(source="httpx", source_port="endpoints", target="katana", target_port="endpoints"),
-            EdgeDefinition(source="httpx", source_port="endpoints", target="nuclei", target_port="targets"),
-        ]
-        wf_name = f"Full recon scan for {target}"
+        # Standard presets
+        if preset == "fast":
+            nodes = [
+                NodeDefinition(id="target_input", type="builtin.target_input", config={"raw_input": target}),
+                NodeDefinition(id="scope_guard", type="builtin.scope_guard", config={}),
+                NodeDefinition(id="subfinder", type="plugin.subfinder", config={}),
+                NodeDefinition(id="dnsx", type="plugin.dnsx", config={}),
+                NodeDefinition(id="httpx", type="plugin.httpx", config={}),
+            ]
+            edges = [
+                EdgeDefinition(source="target_input", source_port="output", target="scope_guard", target_port="input"),
+                EdgeDefinition(source="scope_guard", source_port="in_scope", target="subfinder", target_port="target"),
+                EdgeDefinition(source="subfinder", source_port="subdomains", target="dnsx", target_port="hosts"),
+                EdgeDefinition(source="dnsx", source_port="valid_hosts", target="httpx", target_port="targets"),
+            ]
+            wf_name = f"Fast recon for {target}"
+
+        elif preset == "passive":
+            nodes = [
+                NodeDefinition(id="target_input", type="builtin.target_input", config={"raw_input": target}),
+                NodeDefinition(id="scope_guard", type="builtin.scope_guard", config={}),
+                NodeDefinition(id="subfinder", type="plugin.subfinder", config={}),
+                NodeDefinition(id="assetfinder", type="plugin.assetfinder", config={}),
+                NodeDefinition(id="amass", type="plugin.amass", config={}),
+                NodeDefinition(id="union_dedupe", type="builtin.union_dedupe", config={}),
+                NodeDefinition(id="gau", type="plugin.gau", config={}),
+            ]
+            edges = [
+                EdgeDefinition(source="target_input", source_port="output", target="scope_guard", target_port="input"),
+                EdgeDefinition(source="scope_guard", source_port="in_scope", target="subfinder", target_port="target"),
+                EdgeDefinition(source="scope_guard", source_port="in_scope", target="assetfinder", target_port="target"),
+                EdgeDefinition(source="scope_guard", source_port="in_scope", target="amass", target_port="target"),
+                EdgeDefinition(source="scope_guard", source_port="in_scope", target="gau", target_port="target"),
+                EdgeDefinition(source="subfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
+                EdgeDefinition(source="assetfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
+                EdgeDefinition(source="amass", source_port="subdomains", target="union_dedupe", target_port="inputs"),
+            ]
+            wf_name = f"Passive recon for {target}"
+
+        elif preset == "vuln":
+            nodes = [
+                NodeDefinition(id="target_input", type="builtin.target_input", config={"raw_input": target}),
+                NodeDefinition(id="scope_guard", type="builtin.scope_guard", config={}),
+                NodeDefinition(id="subfinder", type="plugin.subfinder", config={}),
+                NodeDefinition(id="dnsx", type="plugin.dnsx", config={}),
+                NodeDefinition(id="httpx", type="plugin.httpx", config={}),
+                NodeDefinition(id="nuclei", type="plugin.nuclei", config={}),
+            ]
+            edges = [
+                EdgeDefinition(source="target_input", source_port="output", target="scope_guard", target_port="input"),
+                EdgeDefinition(source="scope_guard", source_port="in_scope", target="subfinder", target_port="target"),
+                EdgeDefinition(source="subfinder", source_port="subdomains", target="dnsx", target_port="hosts"),
+                EdgeDefinition(source="dnsx", source_port="valid_hosts", target="httpx", target_port="targets"),
+                EdgeDefinition(source="httpx", source_port="endpoints", target="nuclei", target_port="targets"),
+            ]
+            wf_name = f"Vulnerability assessment for {target}"
+
+        else:
+            # Default / Full comprehensive reconnaissance & vulnerability pipeline
+            nodes = [
+                NodeDefinition(id="target_input", type="builtin.target_input", config={"raw_input": target}),
+                NodeDefinition(id="scope_guard", type="builtin.scope_guard", config={}),
+                NodeDefinition(id="subfinder", type="plugin.subfinder", config={}),
+                NodeDefinition(id="assetfinder", type="plugin.assetfinder", config={}),
+                NodeDefinition(id="amass", type="plugin.amass", config={}),
+                NodeDefinition(id="union_dedupe", type="builtin.union_dedupe", config={}),
+                NodeDefinition(id="dnsx", type="plugin.dnsx", config={}),
+                NodeDefinition(id="naabu", type="plugin.naabu", config={}),
+                NodeDefinition(id="httpx", type="plugin.httpx", config={}),
+                NodeDefinition(id="gau", type="plugin.gau", config={}),
+                NodeDefinition(id="katana", type="plugin.katana", config={}),
+                NodeDefinition(id="nuclei", type="plugin.nuclei", config={}),
+            ]
+            edges = [
+                EdgeDefinition(source="target_input", source_port="output", target="scope_guard", target_port="input"),
+                EdgeDefinition(source="scope_guard", source_port="in_scope", target="subfinder", target_port="target"),
+                EdgeDefinition(source="scope_guard", source_port="in_scope", target="assetfinder", target_port="target"),
+                EdgeDefinition(source="scope_guard", source_port="in_scope", target="amass", target_port="target"),
+                EdgeDefinition(source="subfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
+                EdgeDefinition(source="assetfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
+                EdgeDefinition(source="amass", source_port="subdomains", target="union_dedupe", target_port="inputs"),
+                EdgeDefinition(source="union_dedupe", source_port="output", target="dnsx", target_port="hosts"),
+                EdgeDefinition(source="dnsx", source_port="valid_hosts", target="naabu", target_port="hosts"),
+                EdgeDefinition(source="dnsx", source_port="valid_hosts", target="httpx", target_port="targets"),
+                EdgeDefinition(source="scope_guard", source_port="in_scope", target="gau", target_port="target"),
+                EdgeDefinition(source="httpx", source_port="endpoints", target="katana", target_port="endpoints"),
+                EdgeDefinition(source="httpx", source_port="endpoints", target="nuclei", target_port="targets"),
+            ]
+            wf_name = f"Full recon scan for {target}"
+
+    # Handle dynamic tool additions (--with)
+    if with_tools:
+        for wt in with_tools:
+            manifest = plugin_registry.get(wt)
+            if not manifest:
+                console.print(f"[bold yellow]Warning:[/bold yellow] Plugin '{wt}' not found in registry. Skipping.")
+                continue
+
+            stage = manifest.stage.lower()
+            in_port = manifest.inputs[0].name if manifest.inputs else "target"
+            out_port = manifest.outputs[0].name if manifest.outputs else "output"
+            in_src = manifest.inputs[0].source if manifest.inputs else "artifact"
+
+            if not any(n.id == wt for n in nodes):
+                nodes.append(NodeDefinition(id=wt, type=f"plugin.{wt}", config={}))
+
+            if stage == "subdomains":
+                edges.append(EdgeDefinition(source="scope_guard", source_port="in_scope", target=wt, target_port=in_port))
+                if any(n.id == "union_dedupe" for n in nodes):
+                    edges.append(EdgeDefinition(source=wt, source_port=out_port, target="union_dedupe", target_port="inputs"))
+            elif stage in ("ports", "dns"):
+                src = "dnsx" if any(n.id == "dnsx" for n in nodes) else "union_dedupe"
+                src_port = "valid_hosts" if src == "dnsx" else "output"
+                edges.append(EdgeDefinition(source=src, source_port=src_port, target=wt, target_port=in_port))
+            elif stage in ("crawling", "urls"):
+                if in_src == "param":
+                    edges.append(EdgeDefinition(source="scope_guard", source_port="in_scope", target=wt, target_port=in_port))
+                elif any(n.id == "httpx" for n in nodes):
+                    edges.append(EdgeDefinition(source="httpx", source_port="endpoints", target=wt, target_port=in_port))
+            elif stage in ("vulns", "xss"):
+                if any(n.id == "httpx" for n in nodes):
+                    edges.append(EdgeDefinition(source="httpx", source_port="endpoints", target=wt, target_port=in_port))
+            else:
+                if any(n.id == "httpx" for n in nodes):
+                    edges.append(EdgeDefinition(source="httpx", source_port="endpoints", target=wt, target_port=in_port))
+                else:
+                    edges.append(EdgeDefinition(source="scope_guard", source_port="in_scope", target=wt, target_port=in_port))
+
+    # Handle dynamic tool skips (--skip)
+    if skip_tools:
+        skip_set = set(skip_tools)
+        nodes = [n for n in nodes if n.id not in skip_set]
+        edges = [e for e in edges if e.source not in skip_set and e.target not in skip_set]
 
     return WorkflowDefinition(
         id=f"scan-{target}",
@@ -217,6 +395,9 @@ def run_scan(
     output_format: Optional[str] = typer.Option(None, "--output-format", help="Force output format: json | md | csv"),
     no_results: bool = typer.Option(False, "--no-results", help="Skip the pretty results table — only show the summary card"),
     clear: bool = typer.Option(False, "--clear", help="Clear all existing sessions for this target before scanning"),
+    with_tools: Optional[list[str]] = typer.Option(None, "--with", help="Include extra registered tool(s) in this scan (e.g. --with findomain --with dalfox)"),
+    skip_tools: Optional[list[str]] = typer.Option(None, "--skip", help="Omit specific tool(s) from running (e.g. --skip amass --skip gau)"),
+    tools: Optional[str] = typer.Option(None, "--tools", help="Comma-separated list of exact tools to run (e.g. --tools subfinder,httpx,nuclei)"),
 ):
     """Launch or resume an automated reconnaissance workflow."""
     if not target and not resume:
@@ -433,12 +614,15 @@ def run_scan(
             wf = WorkflowDefinition.model_validate_json(f.read())
         is_resume = True
     else:
-        # Build workflow DAG based on preset (default = full comprehensive pipeline)
+        custom_list = [t.strip().lower() for t in tools.split(",") if t.strip()] if tools else None
         wf = build_workflow(
             target=target,
             preset=workflow,
             scope_include=scope_include,
             scope_exclude=scope_exclude,
+            with_tools=with_tools,
+            skip_tools=skip_tools,
+            custom_tools=custom_list,
         )
         session_dir = session_mgr.create_session(target=target, workflow=wf, fingerprint=fp)
         is_resume = False

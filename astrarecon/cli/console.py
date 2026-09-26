@@ -31,13 +31,11 @@ from astrarecon.core.sessions.manager import SessionManager
 app = typer.Typer(help="Launch the interactive AstraRecon reconnaissance console.")
 console = Console(legacy_windows=False)
 
-ASCII_BANNER = r"""
-       _   ____ _____ ____      _    ____  _____ ____ ___  _   _ 
-      / \ / ___|_   _|  _ \    / \  |  _ \| ____/ ___/ _ \| \ | |
-     / _ \\___ \ | | | |_) |  / _ \ | |_) |  _|| |  | | | |  \| |
-    / ___ \___) || | |  _ <  / ___ \|  _ <| |__| |__| |_| | |\  |
-   /_/   \_\____/ |_| |_| \_\/_/   \_\_| \_\_____\____\___/|_| \_|
-"""
+ASCII_BANNER = r"""    _    ____ _____ ____      _    ____  _____ ____ ___  _   _ 
+   / \  / ___|_   _|  _ \    / \  |  _ \| ____/ ___/ _ \| \ | |
+  / _ \ \___ \ | | | |_) |  / _ \ | |_) |  _|| |  | | | |  \| |
+ / ___ \ ___) || | |  _ <  / ___ \|  _ <| |__| |__| |_| | |\  |
+/_/   \_\____/ |_| |_| \_\/_/   \_\_| \_\_____\____\___/|_| \_|"""
 
 
 class ConsoleState:
@@ -98,7 +96,12 @@ def render_banner(plugins=None, env=None, session_count=None):
         env = EnvironmentInspector.inspect()
     installed_count = sum(1 for status in env.tools.values() if status.installed)
 
-    banner_text = Text(ASCII_BANNER.strip("\n"), style=f"bold {COLOR_PRIMARY}")
+    banner_text = Text()
+    for l in ASCII_BANNER.split("\n"):
+        banner_text.append("  ")
+        banner_text.append(l[:34], style=f"bold {COLOR_ACCENT}")
+        banner_text.append(l[34:], style=f"bold {COLOR_PRIMARY}")
+        banner_text.append("\n")
 
     stats_lines = [
         f"[bold white]AstraRecon Console[/bold white] v{__version__} [dim]─ Autonomous Reconnaissance Orchestrator[/dim]",
@@ -469,7 +472,7 @@ def run_console():
         try:
             from prompt_toolkit import PromptSession
             from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-            from prompt_toolkit.formatted_text import HTML
+            from prompt_toolkit.formatted_text import FormattedText
             from prompt_toolkit.history import FileHistory
 
             history_file = Path.home() / ".astrarecon" / "console_history"
@@ -478,8 +481,10 @@ def run_console():
                 history=FileHistory(str(history_file)),
                 auto_suggest=AutoSuggestFromHistory(),
                 completer=build_completer(),
+                complete_while_typing=False,
+                reserve_space_for_menu=0,
             )
-            has_pt = True
+            has_pt = sys.stdin.isatty()
         except Exception:
             has_pt = False
 
@@ -490,10 +495,18 @@ def run_console():
             # Build prompt: astrarecon (workflow/default) >
             if state.active_module:
                 prompt_label = f"astrarecon ({state.active_module}) > "
-                pt_prompt = HTML(f"<ansicyan><b>astrarecon</b></ansicyan> (<ansired><b>{state.active_module}</b></ansired>) &gt; ")
+                pt_prompt = FormattedText([
+                    ("class:ansicyan bold", "astrarecon"),
+                    ("", " ("),
+                    ("class:ansired bold", state.active_module),
+                    ("", ") > "),
+                ])
             else:
                 prompt_label = "astrarecon > "
-                pt_prompt = HTML("<ansicyan><b>astrarecon</b></ansicyan> &gt; ")
+                pt_prompt = FormattedText([
+                    ("class:ansicyan bold", "astrarecon"),
+                    ("", " > "),
+                ])
 
             if has_pt:
                 line = session.prompt(pt_prompt)

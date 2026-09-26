@@ -231,3 +231,46 @@ class SessionManager:
                 reclaimed_bytes += dir_size
 
         return pruned_count, reclaimed_bytes
+
+    def clear_sessions(self, target: Optional[str] = None) -> tuple[int, int]:
+        """Clears all recorded sessions, or sessions matching a specific target domain.
+        
+        Returns:
+            (deleted_count, reclaimed_bytes)
+        """
+        if not self.base_dir.exists():
+            return 0, 0
+
+        deleted_count = 0
+        reclaimed_bytes = 0
+
+        for sdir in list(self.base_dir.iterdir()):
+            if not sdir.is_dir():
+                continue
+
+            session_file = sdir / "session.json"
+            if target:
+                match = False
+                if session_file.exists():
+                    try:
+                        snap = self.load_session_snapshot(sdir)
+                        if snap.target.lower() == target.lower() or target.lower() in sdir.name.lower():
+                            match = True
+                    except Exception:
+                        if target.lower() in sdir.name.lower():
+                            match = True
+                elif target.lower() in sdir.name.lower():
+                    match = True
+                if not match:
+                    continue
+
+            try:
+                dir_size = sum(f.stat().st_size for f in sdir.rglob("*") if f.is_file())
+            except Exception:
+                dir_size = 0
+
+            shutil.rmtree(sdir, ignore_errors=True)
+            deleted_count += 1
+            reclaimed_bytes += dir_size
+
+        return deleted_count, reclaimed_bytes

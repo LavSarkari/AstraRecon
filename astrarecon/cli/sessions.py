@@ -221,3 +221,36 @@ def prune_sessions(
         console.print(f"[bold green]✔[/bold green] Pruned {count} session(s), reclaimed [bold cyan]{mb:.1f} MB[/bold cyan] of disk space.")
     else:
         console.print("[dim]No matching sessions found to prune.[/dim]")
+
+
+@app.command("clear")
+def clear_sessions(
+    target: Optional[str] = typer.Option(None, "--target", "-t", help="Only clear sessions for a specific target domain"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force clear without confirmation prompt"),
+):
+    """Permanently clear and remove stored reconnaissance sessions."""
+    mgr = SessionManager()
+    sessions_dir = mgr.base_dir
+    if not sessions_dir.exists():
+        console.print("[yellow]No sessions found to clear.[/yellow]")
+        return
+
+    session_folders = [d for d in sessions_dir.iterdir() if d.is_dir()]
+    if not session_folders:
+        console.print("[yellow]No sessions found to clear.[/yellow]")
+        return
+
+    prompt_msg = f"Permanently delete ALL sessions for target '{target}'?" if target else f"Permanently delete ALL {len(session_folders)} recorded scan session(s)?"
+    if not force:
+        confirmed = typer.confirm(prompt_msg)
+        if not confirmed:
+            console.print("[dim]Operation cancelled.[/dim]")
+            return
+
+    count, reclaimed = mgr.clear_sessions(target=target)
+    mb = reclaimed / (1024 * 1024)
+    if count > 0:
+        desc = f" for target '{target}'" if target else ""
+        console.print(f"[bold green]✔[/bold green] Successfully cleared {count} session(s){desc}, reclaimed [bold cyan]{mb:.1f} MB[/bold cyan] of disk space.")
+    else:
+        console.print(f"[dim]No matching sessions found to clear.[/dim]")

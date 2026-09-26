@@ -216,6 +216,7 @@ def run_scan(
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save full results to file. Format auto-detected from extension: .json, .md, .csv"),
     output_format: Optional[str] = typer.Option(None, "--output-format", help="Force output format: json | md | csv"),
     no_results: bool = typer.Option(False, "--no-results", help="Skip the pretty results table — only show the summary card"),
+    clear: bool = typer.Option(False, "--clear", help="Clear all existing sessions for this target before scanning"),
 ):
     """Launch or resume an automated reconnaissance workflow."""
     if not target and not resume:
@@ -269,8 +270,15 @@ def run_scan(
         tools={name: status.version or "installed" for name, status in env.tools.items() if status.installed},
     )
 
-    # Check for existing sessions on the same target domain when neither --resume nor --fresh was passed
-    if target and not resume and not fresh:
+    # If --clear was explicitly passed, delete previous sessions for this target before scanning
+    if target and clear:
+        c_count, c_bytes = session_mgr.clear_sessions(target=target)
+        c_mb = c_bytes / (1024 * 1024)
+        if c_count > 0:
+            console.print(f"[bold green]✔[/bold green] Cleared {c_count} previous session(s) for target '{target}' ({c_mb:.1f} MB reclaimed).\n")
+
+    # Check for existing sessions on the same target domain when neither --resume nor --fresh nor --clear was passed
+    if target and not resume and not fresh and not clear:
         existing_sessions = session_mgr.get_sessions_for_target(target)
         if existing_sessions:
             table = Table(
@@ -335,6 +343,8 @@ def run_scan(
                 menu_text.append(f"View results collected so far ({latest_dir.name})\n", style="white")
             menu_text.append("  [f] ", style="bold #1DA1FF")
             menu_text.append("Start a fresh scan (create new session)\n", style="white")
+            menu_text.append("  [c] ", style="bold #EF4444")
+            menu_text.append(f"Clear all existing sessions for '{target}' and start fresh\n", style="white")
             if len(existing_sessions) > 1:
                 menu_text.append(f"  [1-{len(existing_sessions[:5])}] ", style="bold #1DA1FF")
                 menu_text.append("Select a specific session from the list above\n", style="white")
@@ -342,7 +352,7 @@ def run_scan(
             menu_text.append("Cancel and exit\n", style="white")
 
             default_action = "v" if latest_is_done else "r"
-            prompt_hint = "v=view results, r=resume, f=fresh" if latest_is_done else "r=resume, v=view results, f=fresh"
+            prompt_hint = "v=view results, r=resume, f=fresh, c=clear" if latest_is_done else "r=resume, v=view results, f=fresh, c=clear"
             if len(existing_sessions) > 1:
                 prompt_hint += ", 1-N=select"
             prompt_hint += ", q=quit"
@@ -372,6 +382,11 @@ def run_scan(
                     if choice in ("q", "quit", "exit"):
                         console.print("[dim]Scan cancelled by user.[/dim]")
                         raise typer.Exit(code=0)
+                    elif choice in ("c", "clear"):
+                        c_count, c_bytes = session_mgr.clear_sessions(target=target)
+                        c_mb = c_bytes / (1024 * 1024)
+                        console.print(f"[bold green]✔[/bold green] Cleared {c_count} session(s) for '{target}' ({c_mb:.1f} MB reclaimed).\n")
+                        resume = None  # Will create a fresh session below
                     elif choice in ("f", "fresh", "new"):
                         resume = None  # Will create a fresh session below
                     elif choice.isdigit() and 1 <= int(choice) <= len(existing_sessions[:5]):

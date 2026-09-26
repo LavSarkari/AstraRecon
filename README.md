@@ -234,9 +234,9 @@ astrarecon doctor --install-missing
 
 ## Usage Guide
 
-### Interactive Console (`msfconsole` Experience)
+### Interactive Recon Console
 
-AstraRecon features an interactive REPL shell with persistent history, Tab auto-completion, and Metasploit-style module and options management:
+AstraRecon features a persistent interactive shell with command history, Tab auto-completion, dynamic module context, and centralized options configuration:
 
 ```bash
 # Launch interactive console

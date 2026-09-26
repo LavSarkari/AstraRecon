@@ -1,4 +1,4 @@
-"""Interactive Metasploit-Style Console for AstraRecon (msfconsole user experience)."""
+"""Interactive Reconnaissance Console for AstraRecon."""
 
 import os
 import shlex
@@ -28,7 +28,7 @@ from astrarecon.core.doctor.inspector import EnvironmentInspector
 from astrarecon.core.plugins.loader import PluginLoader
 from astrarecon.core.sessions.manager import SessionManager
 
-app = typer.Typer(help="Launch the interactive Metasploit-style AstraRecon console.")
+app = typer.Typer(help="Launch the interactive AstraRecon reconnaissance console.")
 console = Console(legacy_windows=False)
 
 ASCII_BANNER = r"""
@@ -87,7 +87,7 @@ class ConsoleState:
 
 
 def render_banner():
-    """Renders the Metasploit-style startup banner with live environment telemetry."""
+    """Renders the startup banner with live environment telemetry."""
     session_mgr = SessionManager()
     sessions_dir = session_mgr.base_dir
     session_count = len([d for d in sessions_dir.iterdir() if d.is_dir() and (d / "session.json").exists()]) if sessions_dir.exists() else 0
@@ -117,7 +117,7 @@ def render_banner():
 
 
 def show_options(state: ConsoleState):
-    """Displays the Metasploit-style options table for the active context."""
+    """Displays the options table for the active context."""
     table = Table(
         title=f"\n[bold white]Module Options[/bold white] ([bold {COLOR_PRIMARY}]{state.active_module or 'global'}[/bold {COLOR_PRIMARY}]):",
         title_justify="left",
@@ -386,7 +386,7 @@ def build_completer():
 
 @app.callback(invoke_without_command=True)
 def run_console():
-    """Launch the interactive Metasploit-style console."""
+    """Launch the interactive reconnaissance console."""
     state = ConsoleState()
     render_banner()
 
@@ -411,7 +411,7 @@ def run_console():
 
     while True:
         try:
-            # Build Metasploit-style prompt: astrarecon (workflow/default) >
+            # Build prompt: astrarecon (workflow/default) >
             if state.active_module:
                 prompt_label = f"astrarecon ({state.active_module}) > "
                 pt_prompt = HTML(f"<ansicyan><b>astrarecon</b></ansicyan> (<ansired><b>{state.active_module}</b></ansired>) &gt; ")
@@ -565,7 +565,7 @@ def run_console():
                 console.print("[dim]Type '[bold white]help[/bold white]' or '[bold white]?[/bold white]' to view available commands.[/dim]")
 
         except KeyboardInterrupt:
-            # Ctrl+C inside REPL clears line, exactly like msfconsole
+            # Ctrl+C inside REPL clears line
             console.print("\n[dim](^C - To exit AstraRecon console, type 'exit')[/dim]")
             continue
         except EOFError:

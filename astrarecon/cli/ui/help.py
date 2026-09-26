@@ -72,7 +72,7 @@ class HelpMenuView:
         cmd_table.add_row(
             "console",
             "[-i / --interactive]",
-            "Interactive Metasploit-style console (msfconsole user experience)",
+            "Interactive reconnaissance shell with Tab completion and state management",
         )
         cmd_table.add_row(
             "scan",

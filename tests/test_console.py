@@ -1,4 +1,4 @@
-"""Unit tests for the Metasploit-style interactive console."""
+"""Unit tests for the interactive reconnaissance console."""
 
 import pytest
 from astrarecon.cli.console import (

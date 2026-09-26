@@ -70,7 +70,7 @@ def help_callback(ctx: typer.Context, value: bool):
 def main(
     ctx: typer.Context,
     interactive: bool = typer.Option(
-        False, "--interactive", "-i", help="Launch interactive Metasploit-style console."
+        False, "--interactive", "-i", help="Launch interactive reconnaissance console."
     ),
     version: Optional[bool] = typer.Option(
         None, "--version", "-v", callback=version_callback, is_eager=True, help="Show version and exit."

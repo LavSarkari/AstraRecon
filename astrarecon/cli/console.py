@@ -86,13 +86,16 @@ class ConsoleState:
         return False
 
 
-def render_banner():
+def render_banner(plugins=None, env=None, session_count=None):
     """Renders the startup banner with live environment telemetry."""
-    session_mgr = SessionManager()
-    sessions_dir = session_mgr.base_dir
-    session_count = len([d for d in sessions_dir.iterdir() if d.is_dir() and (d / "session.json").exists()]) if sessions_dir.exists() else 0
-    plugins = PluginLoader.load_all_plugins()
-    env = EnvironmentInspector.inspect()
+    if session_count is None:
+        session_mgr = SessionManager()
+        sessions_dir = session_mgr.base_dir
+        session_count = len([d for d in sessions_dir.iterdir() if d.is_dir() and (d / "session.json").exists()]) if sessions_dir.exists() else 0
+    if plugins is None:
+        plugins = PluginLoader.load_all_plugins()
+    if env is None:
+        env = EnvironmentInspector.inspect()
     installed_count = sum(1 for status in env.tools.values() if status.installed)
 
     banner_text = Text(ASCII_BANNER.strip("\n"), style=f"bold {COLOR_PRIMARY}")
@@ -440,27 +443,47 @@ def build_completer():
 @app.callback(invoke_without_command=True)
 def run_console():
     """Launch the interactive reconnaissance console."""
+    from astrarecon.cli.ui.loader import AstraLoader
+
     state = ConsoleState()
-    render_banner()
-
-    # Check prompt_toolkit availability
+    plugins = None
+    env = None
+    session_count = 0
     has_pt = False
-    try:
-        from prompt_toolkit import PromptSession
-        from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-        from prompt_toolkit.formatted_text import HTML
-        from prompt_toolkit.history import FileHistory
+    session = None
 
-        history_file = Path.home() / ".astrarecon" / "console_history"
-        history_file.parent.mkdir(parents=True, exist_ok=True)
-        session = PromptSession(
-            history=FileHistory(str(history_file)),
-            auto_suggest=AutoSuggestFromHistory(),
-            completer=build_completer(),
+    with AstraLoader("Aligning constellation telemetry & plugins...") as loader:
+        plugins = PluginLoader.load_all_plugins()
+        loader.update("Inspecting orbital tool binaries...")
+        env = EnvironmentInspector.inspect()
+
+        session_mgr = SessionManager()
+        sessions_dir = session_mgr.base_dir
+        session_count = (
+            len([d for d in sessions_dir.iterdir() if d.is_dir() and (d / "session.json").exists()])
+            if sessions_dir.exists()
+            else 0
         )
-        has_pt = True
-    except Exception:
-        has_pt = False
+
+        loader.update("Building command completions & history...")
+        try:
+            from prompt_toolkit import PromptSession
+            from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+            from prompt_toolkit.formatted_text import HTML
+            from prompt_toolkit.history import FileHistory
+
+            history_file = Path.home() / ".astrarecon" / "console_history"
+            history_file.parent.mkdir(parents=True, exist_ok=True)
+            session = PromptSession(
+                history=FileHistory(str(history_file)),
+                auto_suggest=AutoSuggestFromHistory(),
+                completer=build_completer(),
+            )
+            has_pt = True
+        except Exception:
+            has_pt = False
+
+    render_banner(plugins=plugins, env=env, session_count=session_count)
 
     while True:
         try:

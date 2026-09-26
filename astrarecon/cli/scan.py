@@ -436,9 +436,12 @@ def run_scan(
         console.print("[dim]Tip: Prune old scan sessions using 'astrarecon sessions prune'.[/dim]\n")
         raise typer.Exit(code=1)
 
-    cas = ContentAddressedStore()
-    plugin_registry = PluginLoader.load_all_plugins()
-    env = EnvironmentInspector.inspect()
+    from astrarecon.cli.ui.loader import AstraLoader
+
+    with AstraLoader("Aligning reconnaissance flight plan & plugin vectors..."):
+        cas = ContentAddressedStore()
+        plugin_registry = PluginLoader.load_all_plugins()
+        env = EnvironmentInspector.inspect()
 
     fp = EnvFingerprint(
         captured_at=datetime.utcnow(),

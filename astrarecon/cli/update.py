@@ -115,13 +115,16 @@ def check_and_prompt_update() -> None:
         latest = cached_version
         source = cached_source
     else:
-        # Check GitHub main first, fallback to PyPI
-        latest = _fetch_latest_github_version()
-        if latest:
-            source = "github"
-        else:
-            latest = _fetch_latest_pypi_version()
-            source = "pypi"
+        from astrarecon.cli.ui.loader import AstraLoader
+
+        with AstraLoader("Querying cosmic update relay..."):
+            # Check GitHub main first, fallback to PyPI
+            latest = _fetch_latest_github_version()
+            if latest:
+                source = "github"
+            else:
+                latest = _fetch_latest_pypi_version()
+                source = "pypi"
 
         if latest:
             try:
@@ -241,10 +244,11 @@ def run_update(
             return
 
         install_target = f"git+https://github.com/{_GITHUB_REPO}.git@{_GITHUB_BRANCH}"
-        console.print(f"  [dim]Installing from GitHub…[/dim]\n")
+        from astrarecon.cli.ui.loader import AstraLoader
 
         try:
-            result = _run_install(install_target, force=force)
+            with AstraLoader("Installing update from GitHub repository..."):
+                result = _run_install(install_target, force=force)
             console.print(f"  [{COLOR_SUCCESS}]✔[/{COLOR_SUCCESS}] Updated from GitHub main branch.\n")
             if result.stdout:
                 for line in result.stdout.strip().splitlines()[-5:]:
@@ -262,10 +266,12 @@ def run_update(
     # -----------------------------------------------------------------------
     # PyPI source (default)
     # -----------------------------------------------------------------------
-    console.print(f"  Source           [bold {COLOR_ACCENT}]PyPI (stable)[/bold {COLOR_ACCENT}]")
-    console.print(f"  [dim]Checking PyPI for latest version…[/dim]")
+    from astrarecon.cli.ui.loader import AstraLoader
 
-    latest = _fetch_latest_pypi_version()
+    console.print(f"  Source           [bold {COLOR_ACCENT}]PyPI (stable)[/bold {COLOR_ACCENT}]")
+
+    with AstraLoader("Checking PyPI for latest release..."):
+        latest = _fetch_latest_pypi_version()
 
     if latest is None:
         console.print(f"\n  [bold {COLOR_WARNING}]⚠ Could not reach PyPI.[/bold {COLOR_WARNING}] Check your internet connection.\n")
@@ -307,10 +313,9 @@ def run_update(
             console.print(f"\n  Run [bold {COLOR_ACCENT}]astrarecon update[/bold {COLOR_ACCENT}] to install.\n")
         return
 
-    console.print(f"\n  [dim]Installing astrarecon=={latest} from PyPI…[/dim]\n")
-
     try:
-        result = _run_install(f"astrarecon=={latest}", force=force and latest_t <= current_t)
+        with AstraLoader(f"Installing astrarecon=={latest} from PyPI..."):
+            result = _run_install(f"astrarecon=={latest}", force=force and latest_t <= current_t)
         console.print(f"  [{COLOR_SUCCESS}]✔[/{COLOR_SUCCESS}] Updated to [bold {COLOR_SUCCESS}]{latest}[/bold {COLOR_SUCCESS}] successfully.\n")
         console.print(
             f"  [dim]Restart your shell or run [bold]hash -r[/bold] if the command is cached.[/dim]\n"

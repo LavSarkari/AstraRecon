@@ -24,6 +24,8 @@ from astrarecon.cli.ui.theme import (
     STATUS_ICONS,
 )
 
+from astrarecon.cli.ui.loader import AstraLoader, astra_loader
+
 __all__ = [
     "COLOR_BG",
     "COLOR_PRIMARY",
@@ -44,4 +46,7 @@ __all__ = [
     "QuickCommandsComponent",
     "CompletionSummaryView",
     "TelemetryCollector",
+    "AstraLoader",
+    "astra_loader",
 ]
+

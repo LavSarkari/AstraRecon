@@ -28,7 +28,10 @@ def run_doctor(
     """Run full system health and security tool diagnostic check."""
     console.print("[bold cyan]AstraRecon Environment Doctor[/bold cyan]\n")
 
-    env = EnvironmentInspector.inspect()
+    from astrarecon.cli.ui.loader import AstraLoader
+
+    with AstraLoader("Inspecting reconnaissance environment & tool binaries..."):
+        env = EnvironmentInspector.inspect()
 
     # System table
     sys_table = Table(title="System & Runtimes", show_header=True, header_style="bold magenta")

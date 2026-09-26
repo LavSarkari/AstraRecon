@@ -231,6 +231,7 @@ def render_help():
         ("sessions clear", "Clear all saved sessions to reclaim disk space"),
         ("export ai <session_id>", "Generate LLM-optimized prompt distillation bundle"),
         ("doctor", "Inspect environment tools and Go binaries"),
+        ("update", "Check for and install latest updates (e.g. update --source github)"),
         ("plugins add <name> ...", "Register a new custom tool without writing YAML"),
         ("plugins remove <name>", "Delete a custom tool plugin"),
         ("banner", "Display AstraRecon ASCII banner and telemetry"),
@@ -411,6 +412,13 @@ def build_completer():
             },
             "doctor": {
                 "--install-missing": None,
+            },
+            "update": {
+                "--source": {"github": None, "pypi": None},
+                "--check": None,
+                "--force": None,
+                "github": None,
+                "pypi": None,
             },
             "plugins": {
                 "list": None,
@@ -601,6 +609,29 @@ def run_console():
                 from astrarecon.cli.doctor import run_doctor
                 install_missing = "--install-missing" in args or "-i" in args
                 run_doctor(install_missing=install_missing)
+
+            elif cmd in ("update", "up"):
+                from astrarecon.cli.update import run_update
+                src = "github"
+                if "pypi" in args:
+                    src = "pypi"
+                elif "--source" in args:
+                    idx = args.index("--source")
+                    if idx + 1 < len(args):
+                        src = args[idx + 1]
+                elif "-s" in args:
+                    idx = args.index("-s")
+                    if idx + 1 < len(args):
+                        src = args[idx + 1]
+
+                check_only = "--check" in args or "-c" in args
+                force_flag = "--force" in args or "-f" in args
+                try:
+                    run_update(source=src, check=check_only, force=force_flag)
+                except typer.Exit:
+                    pass
+                except Exception as e:
+                    console.print(f"[bold {COLOR_ERROR}]Update error:[/bold {COLOR_ERROR}] {e}")
 
             elif cmd in ("plugins", "tools", "pl"):
                 sub = args[0].lower() if args else "list"

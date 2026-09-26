@@ -207,41 +207,12 @@ def _run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, check=check)
 
 
-@app.callback(invoke_without_command=True)
-def update(
-    ctx: typer.Context,
-    source: str = typer.Option(
-        "pypi",
-        "--source",
-        "-s",
-        help="Update source: 'pypi' (stable release) or 'github' (latest commit on main)",
-    ),
-    check: bool = typer.Option(
-        False,
-        "--check",
-        "-c",
-        help="Only check for updates, do not install.",
-    ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        "-f",
-        help="Force reinstall even if already on the latest version.",
-    ),
-):
-    """Check for and apply updates to AstraRecon.
-
-    Examples:
-
-        astrarecon update               # Update from PyPI (stable)
-
-        astrarecon update --check       # Just check, don't install
-
-        astrarecon update --source github   # Install latest commit from GitHub
-    """
-    if ctx.invoked_subcommand is not None:
-        return
-
+def run_update(
+    source: str = "pypi",
+    check: bool = False,
+    force: bool = False,
+) -> None:
+    """Core update executor that checks or applies updates from GitHub or PyPI."""
     console.print()
     console.print(Rule(
         title=f"[bold {COLOR_ACCENT}]  ASTRARECON UPDATE  [/bold {COLOR_ACCENT}]",
@@ -251,6 +222,7 @@ def update(
 
     current = __version__
     console.print(f"  Current version  [bold {COLOR_PRIMARY}]{current}[/bold {COLOR_PRIMARY}]")
+
 
     # -----------------------------------------------------------------------
     # GitHub source
@@ -352,3 +324,40 @@ def update(
         raise typer.Exit(code=1)
 
     console.print()
+
+
+@app.callback(invoke_without_command=True)
+def update(
+    ctx: typer.Context,
+    source: str = typer.Option(
+        "pypi",
+        "--source",
+        "-s",
+        help="Update source: 'pypi' (stable release) or 'github' (latest commit on main)",
+    ),
+    check: bool = typer.Option(
+        False,
+        "--check",
+        "-c",
+        help="Only check for updates, do not install.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Force reinstall even if already on the latest version.",
+    ),
+):
+    """Check for and apply updates to AstraRecon.
+
+    Examples:
+
+        astrarecon update               # Update from PyPI (stable)
+
+        astrarecon update --check       # Just check, don't install
+
+        astrarecon update --source github   # Install latest commit from GitHub
+    """
+    if ctx.invoked_subcommand is not None:
+        return
+    run_update(source=source, check=check, force=force)

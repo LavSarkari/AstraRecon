@@ -6,6 +6,9 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# Disable CPR (Cursor Position Request) to prevent CPR warnings and line miscalculations on Windows Terminal/WSL
+os.environ.setdefault("PROMPT_TOOLKIT_NO_CPR", "1")
+
 import typer
 from rich.box import ROUNDED, SIMPLE
 from rich.console import Console
@@ -474,15 +477,18 @@ def run_console():
             from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
             from prompt_toolkit.formatted_text import FormattedText
             from prompt_toolkit.history import FileHistory
+            from prompt_toolkit.output import create_output
 
             history_file = Path.home() / ".astrarecon" / "console_history"
             history_file.parent.mkdir(parents=True, exist_ok=True)
+            output = create_output(always_prefer_tty=True)
             session = PromptSession(
                 history=FileHistory(str(history_file)),
                 auto_suggest=AutoSuggestFromHistory(),
                 completer=build_completer(),
                 complete_while_typing=False,
                 reserve_space_for_menu=0,
+                output=output,
             )
             has_pt = sys.stdin.isatty()
         except Exception:
@@ -509,7 +515,12 @@ def run_console():
                 ])
 
             if has_pt:
-                line = session.prompt(pt_prompt)
+                try:
+                    line = session.prompt(pt_prompt)
+                except (EOFError, KeyboardInterrupt):
+                    raise
+                except Exception:
+                    line = input(prompt_label)
             else:
                 line = input(prompt_label)
 

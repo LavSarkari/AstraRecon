@@ -471,34 +471,28 @@ def run_console():
             else 0
         )
 
-        loader.update("Building command completions & history...")
-        try:
-            from prompt_toolkit import PromptSession
-            from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-            from prompt_toolkit.formatted_text import FormattedText
-            from prompt_toolkit.history import FileHistory
-            from prompt_toolkit.output import create_output
-            from prompt_toolkit.renderer import CPR_Support
-
-            history_file = Path.home() / ".astrarecon" / "console_history"
-            history_file.parent.mkdir(parents=True, exist_ok=True)
-            output = create_output(always_prefer_tty=True)
-            session = PromptSession(
-                history=FileHistory(str(history_file)),
-                auto_suggest=AutoSuggestFromHistory(),
-                completer=build_completer(),
-                complete_while_typing=False,
-                reserve_space_for_menu=0,
-                output=output,
-            )
-            # Explicitly mark CPR as unsupported so prompt_toolkit renders prompt on frame 0 immediately
-            if hasattr(session.app, "renderer"):
-                session.app.renderer.cpr_support = CPR_Support.NOT_SUPPORTED
-            has_pt = sys.stdin.isatty()
-        except Exception:
-            has_pt = False
-
     render_banner(plugins=plugins, env=env, session_count=session_count)
+
+    try:
+        from prompt_toolkit import PromptSession
+        from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+        from prompt_toolkit.formatted_text import FormattedText
+        from prompt_toolkit.history import FileHistory
+
+        history_file = Path.home() / ".astrarecon" / "console_history"
+        history_file.parent.mkdir(parents=True, exist_ok=True)
+        session = PromptSession(
+            history=FileHistory(str(history_file)),
+            auto_suggest=AutoSuggestFromHistory(),
+            completer=build_completer(),
+            complete_while_typing=False,
+            reserve_space_for_menu=0,
+        )
+        if hasattr(session.app, "cpr_not_supported_callback"):
+            session.app.cpr_not_supported_callback = lambda: None
+        has_pt = sys.stdin.isatty()
+    except Exception:
+        has_pt = False
 
     while True:
         try:

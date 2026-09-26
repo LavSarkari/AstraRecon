@@ -82,7 +82,9 @@ class ToolInstaller:
             "binary_name": "waybackurls",
         },
         "linkfinder": {
-            "github_repo": "GerbenJavado/LinkFinder",
+            "python_git": "https://github.com/GerbenJavado/LinkFinder.git",
+            "python_entry": "linkfinder.py",       # main script inside the repo
+            "pip_requirements": "requirements.txt",  # pip install -r this file if present
             "binary_name": "linkfinder",
         },
         "subenum": {
@@ -128,6 +130,16 @@ class ToolInstaller:
                 return True, "Downloaded official subenum.sh script"
             except Exception as e:
                 return False, f"Script download failed: {e}"
+
+        # Strategy 0.5: Clone Python tool from Git and create a wrapper script
+        if meta.get("python_git"):
+            return cls._install_python_git_tool(
+                git_url=meta["python_git"],
+                entry_script=meta.get("python_entry", f"{bin_name}.py"),
+                requirements_file=meta.get("pip_requirements", "requirements.txt"),
+                bin_name=bin_name,
+                target_dir=target_dir,
+            )
 
         # Strategy 1: Download official precompiled release from GitHub (fastest, pre-built)
         if meta.get("github_repo"):
@@ -199,6 +211,80 @@ class ToolInstaller:
             return False, f"Go compilation error: {e}"
 
         return False, "go install did not produce target executable"
+
+    @classmethod
+    def _install_python_git_tool(
+        cls,
+        git_url: str,
+        entry_script: str,
+        requirements_file: str,
+        bin_name: str,
+        target_dir: Path,
+    ) -> tuple[bool, str]:
+        """Clones a Python-based tool from Git, installs its deps, and writes a wrapper script.
+
+        Layout after install:
+            ~/.astrarecon/tools/<bin_name>/  ← git clone destination
+            ~/.astrarecon/bin/<bin_name>     ← executable wrapper script
+        """
+        tools_dir = target_dir.parent / "tools"
+        tools_dir.mkdir(parents=True, exist_ok=True)
+        clone_dest = tools_dir / bin_name
+
+        # Check git is available
+        git_exe = shutil.which("git")
+        if not git_exe:
+            return False, "git not found in PATH — cannot clone repository"
+
+        # Clone or update
+        try:
+            if clone_dest.exists():
+                res = subprocess.run(
+                    [git_exe, "-C", str(clone_dest), "pull", "--ff-only"],
+                    capture_output=True, text=True, timeout=60,
+                )
+            else:
+                res = subprocess.run(
+                    [git_exe, "clone", "--depth=1", git_url, str(clone_dest)],
+                    capture_output=True, text=True, timeout=120,
+                )
+            if res.returncode != 0:
+                return False, f"git clone/pull failed: {res.stderr.strip()[:200]}"
+        except Exception as e:
+            return False, f"git error: {e}"
+
+        # Locate the entry script
+        entry_path = clone_dest / entry_script
+        if not entry_path.exists():
+            matches = list(clone_dest.rglob(entry_script))
+            if matches:
+                entry_path = matches[0]
+            else:
+                return False, f"Entry script '{entry_script}' not found after clone"
+
+        # Install pip requirements (non-fatal if it fails)
+        req_file = clone_dest / requirements_file
+        python_exe = sys.executable
+        if req_file.exists():
+            try:
+                subprocess.run(
+                    [python_exe, "-m", "pip", "install", "-r", str(req_file), "--quiet"],
+                    capture_output=True, text=True, timeout=120, check=True,
+                )
+            except subprocess.CalledProcessError:
+                pass  # wrapper will surface dep errors at runtime
+
+        # Write an executable bash wrapper
+        wrapper = target_dir / bin_name
+        wrapper.write_text(
+            f"#!/usr/bin/env bash\n"
+            f"# AstraRecon-managed wrapper for {bin_name}\n"
+            f"exec {python_exe} '{entry_path}' \"$@\"\n",
+            encoding="utf-8",
+        )
+        os.chmod(wrapper, 0o755)
+
+        return True, f"Cloned from GitHub + wrapper written ({entry_path.name})"
 
     @classmethod
     def _install_via_github_release(

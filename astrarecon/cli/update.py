@@ -32,6 +32,15 @@ _GITHUB_REPO = "LavSarkari/AstraRecon"
 _GITHUB_BRANCH = "main"
 
 
+def _parse(v: str) -> tuple[int, ...]:
+    """Parse version string into integer tuple for comparison."""
+    try:
+        clean = v.strip().lstrip("v").split("-")[0]
+        return tuple(int(x) for x in clean.split("."))
+    except Exception:
+        return (0,)
+
+
 def _fetch_latest_pypi_version() -> Optional[str]:
     """Returns the latest version string from PyPI, or None on failure."""
     try:
@@ -41,6 +50,126 @@ def _fetch_latest_pypi_version() -> Optional[str]:
             return data["info"]["version"]
     except Exception:
         return None
+
+
+def _fetch_latest_github_version() -> Optional[str]:
+    """Fetches the latest version string from GitHub main branch with 1.5s timeout."""
+    try:
+        import urllib.request, re
+        url = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/{_GITHUB_BRANCH}/astrarecon/__init__.py"
+        req = urllib.request.Request(url, headers={"User-Agent": "AstraRecon-Updater"})
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            content = resp.read().decode("utf-8")
+            m = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', content)
+            if m:
+                return m.group(1).strip()
+    except Exception:
+        pass
+    return None
+
+
+def check_and_prompt_update() -> None:
+    """Pre-execution update checker: checks if a newer version is available and prompts user."""
+    import os, time, json
+    from pathlib import Path
+
+    # Only run in interactive terminals
+    if not sys.stdin.isatty():
+        return
+
+    # Check opt-out flags
+    if os.environ.get("ASTRARECON_NO_UPDATE_CHECK", "").lower() in ("1", "true", "yes"):
+        return
+
+    # Skip if running update or version command
+    argv = sys.argv[1:]
+    if any(arg in ("update", "--version", "-v", "--no-update-check") for arg in argv):
+        return
+
+    cache_file = Path.home() / ".astrarecon" / "update_check.json"
+    cache_data = {}
+    now = time.time()
+
+    if cache_file.exists():
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                cache_data = json.load(f)
+        except Exception:
+            cache_data = {}
+
+    last_check = cache_data.get("last_check", 0)
+    cached_version = cache_data.get("latest_version")
+    cached_source = cache_data.get("source", "github")
+
+    latest = None
+    source = "github"
+
+    # Cache check for 10 minutes to maintain snappy startup
+    if now - last_check < 600 and cached_version:
+        latest = cached_version
+        source = cached_source
+    else:
+        # Check GitHub main first, fallback to PyPI
+        latest = _fetch_latest_github_version()
+        if latest:
+            source = "github"
+        else:
+            latest = _fetch_latest_pypi_version()
+            source = "pypi"
+
+        if latest:
+            try:
+                cache_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(cache_file, "w", encoding="utf-8") as f:
+                    json.dump({"last_check": now, "latest_version": latest, "source": source}, f)
+            except Exception:
+                pass
+
+    if not latest:
+        return
+
+    current = __version__
+    if _parse(latest) <= _parse(current):
+        return
+
+    # An update is available!
+    console.print()
+    update_panel = Panel(
+        Text.from_markup(
+            f"[bold {COLOR_WARNING}]⚡ A new version of AstraRecon is available![/bold {COLOR_WARNING}]\n\n"
+            f"   Current version: [bold {COLOR_PRIMARY}]v{current}[/bold {COLOR_PRIMARY}]\n"
+            f"   Latest version:  [bold {COLOR_SUCCESS}]v{latest}[/bold {COLOR_SUCCESS}]  ([dim]{source}[/dim])\n"
+        ),
+        title=f"[bold white]ASTRA[/bold white][bold {COLOR_PRIMARY}]RECON[/bold {COLOR_PRIMARY}] [dim]─ Update Available[/dim]",
+        title_align="left",
+        box=PANEL_BOX,
+        border_style=COLOR_DIVIDER,
+        padding=(0, 2),
+    )
+    console.print(update_panel)
+
+    try:
+        choice = typer.confirm("Would you like to update AstraRecon now?", default=False)
+    except Exception:
+        return
+
+    if choice:
+        console.print(f"\n[dim]Installing latest version (v{latest})…[/dim]\n")
+        install_target = f"git+https://github.com/{_GITHUB_REPO}.git@{_GITHUB_BRANCH}" if source == "github" else f"astrarecon=={latest}"
+        try:
+            _run_install(install_target, force=True)
+            console.print(f"\n[bold {COLOR_SUCCESS}]✔ Successfully updated to v{latest}![/bold {COLOR_SUCCESS}]")
+            console.print(f"[dim]Please re-run your command to use the updated version.[/dim]\n")
+            try:
+                cache_file.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise typer.Exit(code=0)
+        except subprocess.CalledProcessError as e:
+            console.print(f"\n[bold {COLOR_ERROR}]✖ Update failed:[/bold {COLOR_ERROR}] {e}")
+            console.print("[dim]Continuing with current version…[/dim]\n")
+    else:
+        console.print("[dim]Continuing without updating…[/dim]\n")
 
 
 import shutil

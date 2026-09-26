@@ -91,6 +91,12 @@ def main(
 
 def cli_entrypoint():
     try:
+        from astrarecon.cli.update import check_and_prompt_update
+        check_and_prompt_update()
+    except Exception:
+        pass
+
+    try:
         app()
     except KeyboardInterrupt:
         console.print("\n[dim]Operation cancelled by user.[/dim]")

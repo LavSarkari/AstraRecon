@@ -1,6 +1,6 @@
 # AstraRecon — Development Roadmap
 
-> **Current Version:** v0.1.0-dev (CLI-First Engine Core Completed)  
+> **Current Version:** v0.2.0 (Interactive Console, Tool Registration & Dynamic Pipeline)  
 > **Sequencing Model:** Dependency-Driven Architecture with Council-Validated "Rule of Three" Staging
 
 ---

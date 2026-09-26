@@ -245,12 +245,57 @@ def render_help():
     console.print()
 
 
-def execute_scan(state: ConsoleState):
-    """Executes the scan engine using parameters stored in state."""
+def execute_scan(state: ConsoleState, args: Optional[list[str]] = None):
+    """Executes the scan engine using parameters stored in state or passed inline."""
+    # Parse any inline arguments passed directly to scan/run (e.g. scan example.com --workflow fast)
+    if args:
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            if not arg.startswith("-") and (i == 0 or not state.options["TARGET"]):
+                state.set_option("TARGET", arg)
+                i += 1
+            elif arg in ("--workflow", "-w") and i + 1 < len(args):
+                state.set_option("WORKFLOW", args[i + 1])
+                i += 2
+            elif arg in ("--profile", "-p") and i + 1 < len(args):
+                state.set_option("PROFILE", args[i + 1])
+                i += 2
+            elif arg == "--proxy" and i + 1 < len(args):
+                state.set_option("PROXY", args[i + 1])
+                i += 2
+            elif arg == "--with" and i + 1 < len(args):
+                cur = state.options["WITH"]
+                state.set_option("WITH", f"{cur},{args[i+1]}" if cur else args[i+1])
+                i += 2
+            elif arg == "--skip" and i + 1 < len(args):
+                cur = state.options["SKIP"]
+                state.set_option("SKIP", f"{cur},{args[i+1]}" if cur else args[i+1])
+                i += 2
+            elif arg == "--tools" and i + 1 < len(args):
+                state.set_option("TOOLS", args[i + 1])
+                i += 2
+            elif arg in ("--diff-only",):
+                state.set_option("DIFF_ONLY", "true")
+                i += 1
+            elif arg in ("--fresh", "-f"):
+                state.set_option("FRESH", "true")
+                i += 1
+            elif arg in ("--clear",):
+                state.set_option("CLEAR", "true")
+                i += 1
+            elif arg in ("--output", "-o") and i + 1 < len(args):
+                state.set_option("OUTPUT", args[i + 1])
+                i += 2
+            else:
+                if not arg.startswith("-"):
+                    state.set_option("TARGET", arg)
+                i += 1
+
     target = state.options["TARGET"].strip()
     if not target:
         console.print(f"\n[bold {COLOR_ERROR}][-] Cannot run scan: TARGET option is not set.[/bold {COLOR_ERROR}]")
-        console.print(f"[dim]Use: [bold white]set TARGET example.com[/bold white] before running.[/dim]\n")
+        console.print(f"[dim]Usage: [bold white]scan example.com[/bold white] OR [bold white]set TARGET example.com[/bold white] then run.[/dim]\n")
         return
 
     workflow = state.options["WORKFLOW"].strip() or "default"
@@ -520,9 +565,15 @@ def run_console():
                         console.print(f"[bold {COLOR_ERROR}]Unknown option:[/bold {COLOR_ERROR}] '{k}'")
 
             elif cmd in ("run", "scan", "exploit"):
-                execute_scan(state)
+                execute_scan(state, args)
 
-            elif cmd == "sessions":
+            elif cmd in ("options", "opt"):
+                show_options(state)
+
+            elif cmd in ("workflows", "presets", "wf"):
+                show_workflows()
+
+            elif cmd in ("sessions", "session", "ses", "sess"):
                 if not args or args[0] == "-l":
                     show_sessions()
                 elif args[0] == "-i" and len(args) > 1:
@@ -532,6 +583,10 @@ def run_console():
                     from astrarecon.cli.sessions import clear_sessions
                     force_flag = "--force" in args or "-f" in args
                     clear_sessions(target=None, force=force_flag)
+                elif len(args) == 1 and not args[0].startswith("-"):
+                    # Quick inspect by session ID: sessions <session_id>
+                    from astrarecon.cli.sessions import inspect_session
+                    inspect_session(args[0])
                 else:
                     show_sessions()
 
@@ -542,12 +597,12 @@ def run_console():
                 else:
                     console.print("[dim]Usage: export ai <session_id>[/dim]")
 
-            elif cmd == "doctor":
+            elif cmd in ("doctor", "doc"):
                 from astrarecon.cli.doctor import run_doctor
-                install_missing = "--install-missing" in args
-                run_doctor(install_missing=install_missing, verbose=False)
+                install_missing = "--install-missing" in args or "-i" in args
+                run_doctor(install_missing=install_missing)
 
-            elif cmd == "plugins":
+            elif cmd in ("plugins", "tools", "pl"):
                 sub = args[0].lower() if args else "list"
                 if sub == "list":
                     show_plugins()

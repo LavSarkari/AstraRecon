@@ -55,3 +55,17 @@ def test_console_completer():
     """Verify NestedCompleter compiles with all core commands and options."""
     completer = build_completer()
     assert completer is not None
+
+
+def test_execute_scan_args_parsing():
+    """Verify inline args passed to scan/run update target and flags."""
+    from unittest.mock import patch
+    from astrarecon.cli.console import execute_scan
+
+    state = ConsoleState()
+    with patch("astrarecon.cli.scan.run_scan") as mock_scan:
+        execute_scan(state, ["example.com", "--workflow", "fast", "--proxy", "http://127.0.0.1:8080"])
+        assert state.options["TARGET"] == "example.com"
+        assert state.options["WORKFLOW"] == "fast"
+        assert state.options["PROXY"] == "http://127.0.0.1:8080"
+        assert mock_scan.called

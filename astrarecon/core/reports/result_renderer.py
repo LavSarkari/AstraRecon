@@ -269,7 +269,7 @@ class ScanResultsRenderer:
     def _render_findings(cls, results: ScanResults, limit: bool) -> None:
         findings = results.findings
         if not findings:
-            console.print(f"  [dim {COLOR_SUCCESS}]✔ No vulnerabilities detected.[/dim]\n")
+            console.print(f"  [{COLOR_SUCCESS}]✔[/{COLOR_SUCCESS}] [dim]No vulnerabilities detected.[/dim]\n")
             return
 
         shown = findings[:cls._FINDING_LIMIT] if limit else findings

@@ -29,7 +29,7 @@ execution:
     - "{inputs.target}"
     - "--threads"
     - "5"
-    - "-o"
+    - "--o"
     - "{outputs.urls}"
   timeout_seconds: 600
   retry_count: 1

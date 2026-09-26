@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Visual Recon Workflow Engine</strong><br>
-  <em>Linux-first, DAG-orchestrated reconnaissance with persistent sessions, CAS caching, and AI-ready exports.</em>
+  <em>Linux-first, DAG-orchestrated reconnaissance with persistent sessions, CAS caching, multi-tool fan-out, and AI-ready exports.</em>
 </p>
 
 <p align="center">
@@ -22,9 +22,9 @@
 
 ## What is AstraRecon?
 
-**AstraRecon** is not another wrapper around security binaries. It is an autonomous, graph-based **recon workflow engine** built for modern security engineers, red teams, and bug hunters.
+**AstraRecon** is not another wrapper around security binaries. It is an autonomous, graph-based **recon workflow engine** built for modern security engineers, red teams, and bug bounty hunters.
 
-It executes complex fan-in and fan-out reconnaissance pipelines using a DAG scheduler — no terminal spam, no lost state, no redundant re-execution.
+It executes complex fan-in and fan-out reconnaissance pipelines using a directed acyclic graph (DAG) scheduler — zero terminal spam, zero lost state, and zero redundant re-execution.
 
 ---
 
@@ -32,81 +32,114 @@ It executes complex fan-in and fan-out reconnaissance pipelines using a DAG sche
 
 | Feature | Description |
 | :--- | :--- |
-| **DAG Execution** | Concurrent node scheduling via Kahn's topological sort with cycle rejection and dynamic ready-frontier dispatch |
-| **Persistent Sessions** | Every node transition is checkpointed atomically — resume interrupted scans instantly |
-| **CAS Caching** | SHA-256 blob store keyed on tool version + config + input hash prevents redundant re-scans |
-| **Rich Live UI** | Single in-place viewport with live status icons, timers, and artifact yield counters — zero scroll spam |
-| **Plugin Manifests** | Chain Go binaries, Python tools, and shell scripts via declarative YAML — no code changes needed |
-| **AI Distillation** | Compresses raw scan output into token-budgeted prompt bundles ready for GPT-4o, Claude, and Gemini |
+| **Full 12-Stage Pipeline** | End-to-end autonomous recon by default: subdomain fan-out, deduplication, DNS probing, port scanning, web probing, deep crawling, archive retrieval, and automated vulnerability scanning. |
+| **Workflow Presets** | Instant flexibility via `--workflow` presets: `default` (full 12 stages), `fast` (quick triage), `passive` (non-intrusive), and `vuln` (targeted vulnerability checks). |
+| **Fault-Tolerant DAG** | Dynamic ready-frontier scheduling via Kahn's topological sort. If an optional passive tool encounters a timeout, downstream aggregators proceed gracefully. |
+| **Persistent Sessions & Resumption** | Atomic node checkpoints allow interrupted or aborted scans to resume instantly with zero duplicate API or network work. |
+| **Complete Session Lifecycle** | Full session management: list, inspect, prune old runs, or clear historical sessions with `astrarecon sessions clear` or `--clear`. |
+| **Content-Addressed Cache (CAS)** | SHA-256 blob store keyed on tool version + configuration + input hash completely bypasses re-running identical steps. |
+| **Rich Live UI** | In-place terminal viewport with real-time spinners, execution timers, and live item counters — zero scroll buffer spam. |
+| **AI Distillation Bundles** | Compresses raw scan outputs into token-budgeted prompt bundles ready for GPT-4o, Claude 3.5 Sonnet, and Gemini 1.5 Pro. |
+
+---
+
+## Default Multi-Tool Pipeline Architecture
+
+When you run `astrarecon scan <target>`, AstraRecon automatically constructs and dispatches the full 12-node reconnaissance pipeline:
+
+```mermaid
+flowchart TD
+    TI["1. Target Input"] --> SG["2. Scope Guard"]
+
+    subgraph SUBDOMAINS ["Phase 1: Subdomain Discovery (Parallel Fan-Out)"]
+        SG --> SF["Subfinder (Passive API)"]
+        SG --> AF["Assetfinder (Cert Transparency)"]
+        SG --> AM["OWASP Amass (Active/Passive DNS)"]
+    end
+
+    SF --> UD["3. Union Dedupe"]
+    AF --> UD
+    AM --> UD
+
+    subgraph PROBING ["Phase 2: DNS & Attack Surface"]
+        UD --> DX["4. DNSX (Multi-Resolver)"]
+        DX --> NB["5. Naabu (Port Scanner)"]
+        DX --> HX["6. HTTPX (Live Web Prober)"]
+    end
+
+    subgraph DISCOVERY ["Phase 3: Deep Crawling & History"]
+        SG --> GAU["7. GetAllUrls (gau - Archives)"]
+        HX --> KT["8. Katana (Active Web Crawler)"]
+    end
+
+    subgraph VULNS ["Phase 4: Vulnerability Assessment"]
+        HX --> NC["9. Nuclei (Tech-Matched Scanning)"]
+    end
+```
 
 ---
 
 ## Interface Tour
 
-### Startup Screen — `astrarecon`
+### 1. Live Scan Dashboard — `astrarecon scan example.com`
 
 ```text
-╭───────────────────────────────────────────────────────────────╮
-│                                                               │
-│   ASTRARECON                                                  │
-│   Visual Recon Workflow Engine                                │
-│   ────────────────────────────────────────────────────────    │
-│   Engine          v0.1.0                                      │
-│   Platform        Linux • WSL (x86_64)                        │
-│   Sessions        8 recorded (• Last: example.com (12m ago))  │
-│   Cache           14.2 MB (CAS)                               │
-│   Plugins         9 ready • 3 missing                         │
-│   ────────────────────────────────────────────────────────    │
-│   Installed Plugins                                           │
-│                                                               │
-│   ✓ subfinder               ✓ dnsx                            │
-│   ✓ assetfinder             ✓ httpx                           │
-│   ✓ amass                   ✓ naabu                           │
-│   ✓ katana                  ○ linkfinder                      │
-│   ✓ nuclei                  ✓ dalfox                          │
-│   ✓ gau                     ✓ waybackurls                     │
-│   ────────────────────────────────────────────────────────    │
-│   Quick Commands                                              │
-│                                                               │
-│   astrarecon scan example.com                                 │
-│   astrarecon doctor                                           │
-│   astrarecon plugins list                                     │
-│   astrarecon sessions list                                    │
-│                                                               │
-╰───────────────────────────────────────────────────────────────╯
+╭─ ASTRARECON ─ example.com [00:42] ──────────────────────────╮
+│                                                             │
+│  ✔  Target Input       Success         0.0s        1 items  │
+│  ✔  Scope Guard        Success         0.0s        1 items  │
+│  ✔  Subfinder          Success         4.2s      142 items  │
+│  ✔  Assetfinder        Success         2.8s       88 items  │
+│  ✔  OWASP Amass        Success        32.1s      194 items  │
+│  ✔  Union Dedupe       Success         0.1s      216 items  │
+│  ✔  DNSX               Success         3.4s       48 items  │
+│  ✔  Naabu              Success        12.8s       72 items  │
+│  ✔  HTTPX              Success         4.1s       48 items  │
+│  ✔  GetAllUrls (gau)   Success         8.6s      512 items  │
+│  ✔  Katana             Success        15.3s      340 items  │
+│  ✔  Nuclei             Success        18.7s        3 items  │
+│   ────────────────────────────────────────────────────────  │
+│   ✔ All 12 pipeline stages completed successfully.          │
+│                                                             │
+╰─────────────────────────────────────────────────────────────╯
 ```
 
-### Live Scan Dashboard — `astrarecon scan <target>`
+### 2. Existing Session Detection & Quick Actions
+
+When previous recon runs exist for the target, AstraRecon presents an interactive menu with instant resumption, viewing, and clearing options:
 
 ```text
-╭─ ASTRARECON ─ example.com [00:18] ─────────────────────────╮
-│                                                            │
-│  ✔  Target Input       Success         0.0s       1 items  │
-│  ✔  Scope Guard        Success         0.0s       1 items  │
-│  ✔  Subfinder          Success         4.2s     142 items  │
-│  ✔  Assetfinder        Success         2.8s      88 items  │
-│  ✔  Amass              Success         7.4s     194 items  │
-│  ✔  Union Dedupe       Success         0.1s     216 items  │
-│  ▶  DNSX               Running         3.1s                │
-│  ●  HTTPX              Waiting         --                  │
-│                                                            │
-╰────────────────────────────────────────────────────────────╯
+╭─ ASTRARECON ─ Existing Sessions Detected ───────────────────────────────────╮
+│                                                                             │
+│  Found 2 existing recon session(s) for target 'example.com':                │
+│                                                                             │
+│  [1] 2026-09-26-002-example-com   5m ago   ● Completed     12/12 stages done│
+│  [2] 2026-09-26-001-example-com   2h ago   ● Interrupted    7/12 stages done│
+│                                                                             │
+│  Actions:                                                                   │
+│  [v] View results for latest session                                        │
+│  [r] Resume / re-run latest session                                         │
+│  [f] Start a fresh scan (create new session)                                │
+│  [c] Clear all existing sessions for 'example.com' and start fresh          │
+│  [q] Cancel and exit                                                        │
+│                                                                             │
+╰─────────────────────────────────────────────────────────────────────────────╯
 ```
 
-### Post-Scan Summary
+### 3. Post-Scan Summary & Results Table
 
 ```text
 ╭──────────────────────────────────────────────────────────────╮
 │                                                              │
-│   ✔ Scan Completed for example.com in 00m 24s                │
+│   ✔ Scan Completed for example.com in 00m 42s                │
 │   ──────────────────────────────────────────────────         │
-│   Session ID          2026-09-26-001-example-com             │
+│   Session ID          2026-09-26-002-example-com             │
 │   Subdomains          216                                    │
 │   Live HTTP Hosts     48                                     │
 │   Vulnerabilities     3                                      │
 │   AI Export Bundle    ~/.astrarecon/sessions/.../exports     │
 │                                                              │
-│   Run 'astrarecon export ai 2026-09-26-001-example-com'      │
+│   Run 'astrarecon export ai 2026-09-26-002-example-com'      │
 │   to inspect the prompt bundle.                              │
 │                                                              │
 ╰──────────────────────────────────────────────────────────────╯
@@ -114,45 +147,38 @@ It executes complex fan-in and fan-out reconnaissance pipelines using a DAG sche
 
 ---
 
-## Plugin Ecosystem
+## Workflow Presets
 
-AstraRecon ships with **13 built-in plugin manifests** covering the full recon lifecycle:
+Choose the ideal balance of speed and depth using `--workflow` (`-w`):
 
-| Stage | Plugin | Description |
+| Preset | Command | Included Stages | Best For |
+| :--- | :--- | :--- | :--- |
+| **Default / Full** | `astrarecon scan target.com` | Target Input, Scope Guard, Subfinder, Assetfinder, Amass, Union Dedupe, DNSX, Naabu, HTTPX, GAU, Katana, Nuclei | Complete surface mapping and vulnerability discovery |
+| **Fast** | `astrarecon scan target.com -w fast` | Target Input, Scope Guard, Subfinder, DNSX, HTTPX | Rapid asset triage in under 30 seconds |
+| **Passive** | `astrarecon scan target.com -w passive` | Target Input, Scope Guard, Subfinder, Assetfinder, Amass, Union Dedupe, GAU | Stealthy, non-intrusive OSINT and archive discovery |
+| **Vulnerability** | `astrarecon scan target.com -w vuln` | Target Input, Scope Guard, Subfinder, DNSX, HTTPX, Nuclei | Direct security audits on resolving live endpoints |
+
+---
+
+## Integrated Arsenal (13 Tools)
+
+AstraRecon orchestrates 13 industry-standard reconnaissance tools via declarative YAML manifests:
+
+| Category | Tool | Description |
 | :--- | :--- | :--- |
-| **Subdomain Enumeration** | `subfinder` | Fast passive subdomain enumeration |
-| | `assetfinder` | Passive asset discovery via cert transparency archives |
-| | `amass` | Deep network mapping & recursive DNS discovery |
+| **Subdomain Enumeration** | `subfinder` | High-speed passive subdomain enumeration via passive APIs |
+| | `assetfinder` | Finds domains and subdomains from Certificate Transparency logs |
+| | `amass` | In-depth network mapping and recursive DNS enumeration |
 | | `subenum` | Automated subdomain harvesting shell script |
-| **DNS Resolution** | `dnsx` | Multi-resolver DNS probing & wildcard validation |
-| **HTTP Probing** | `httpx` | Live web server probing, title & tech detection |
-| **Port Scanning** | `naabu` | Fast TCP SYN/connect port scanner |
-| **Historical & Crawling** | `gau` | Wayback Machine, AlienVault & CommonCrawl URLs |
-| | `waybackurls` | Historical endpoints from archive.org |
-| | `katana` | Headless active crawler & JavaScript parser |
-| **JS Endpoint Discovery** | `linkfinder` | Python AST endpoint extraction from `.js` files |
-| **Vulnerability Scanning** | `nuclei` | Fast template-based vulnerability assessment |
-| **XSS Testing** | `dalfox` | Parameter analysis & DOM/reflected XSS detection |
-
-### Custom Plugins
-
-Drop a `plugin.yaml` into `~/.astrarecon/plugins/<name>/` and it is auto-discovered immediately — no restart required.
-
-```yaml
-# ~/.astrarecon/plugins/mytools/plugin.yaml
-name: mytools
-binary: mytools
-version_flag: --version
-install:
-  method: go
-  package: github.com/example/mytools@latest
-inputs:
-  - name: target
-    type: domain
-outputs:
-  - name: results
-    type: file
-```
+| **DNS Resolution** | `dnsx` | Multi-resolver DNS probing & wildcard filtering |
+| **Port Scanning** | `naabu` | Fast TCP port scanner for network service discovery |
+| **Live Probing** | `httpx` | Live web server probing, title extraction, and tech profiling |
+| **Deep Crawling & Archive**| `gau` | Fetches historical URLs from Wayback, AlienVault & Common Crawl |
+| | `katana` | Active JavaScript crawling and dynamic endpoint discovery |
+| | `waybackurls` | Historical URL harvesting from the Wayback Machine |
+| **Endpoint Extraction** | `linkfinder` | Python AST endpoint extraction from `.js` files |
+| **Vulnerability Scanning** | `nuclei` | Fast, template-based vulnerability assessment with auto tech-detection |
+| **XSS Testing** | `dalfox` | Parameter analysis and Cross-Site Scripting (XSS) scanner |
 
 ---
 
@@ -161,25 +187,22 @@ outputs:
 ### Requirements
 
 - Python **3.11+**
-- Linux (Ubuntu, Debian, Kali, Arch) or **WSL2**
+- Linux (Ubuntu, Debian, Kali, Arch) or **WSL2** (Windows Subsystem for Linux)
+- Go **1.21+** (for building third-party Go binaries)
 
-### From PyPI
-
-Using `uv` (recommended):
+### Recommended Install (`uv tool`)
 
 ```bash
 uv tool install astrarecon
 ```
 
-Using `pipx`:
+### Alternative Methods
 
 ```bash
+# Using pipx
 pipx install astrarecon
-```
 
-Using `pip`:
-
-```bash
+# Using pip
 python3.11 -m pip install astrarecon
 ```
 
@@ -195,144 +218,165 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-### Bootstrap Missing Tools
+### Tool Bootstrap & Doctor
 
-After install, let AstraRecon download and compile all missing security binaries into `~/.astrarecon/bin/`:
+After installation, run the diagnostic doctor to inspect or automatically install all missing binaries:
 
 ```bash
+# Inspect environment and installed tool status
+astrarecon doctor
+
+# Automatically install and compile missing tools into ~/.astrarecon/bin/
 astrarecon doctor --install-missing
 ```
 
 ---
 
-## Quick Start
+## Usage Guide
+
+### Basic Scanning
 
 ```bash
-# Run a full recon pipeline
+# Full 12-stage automated reconnaissance
 astrarecon scan example.com
 
-# Save results to a file — JSON, Markdown, or CSV
+# Start fresh, bypassing any existing session prompts
+astrarecon scan example.com --fresh
+
+# Clear previous sessions for this target before scanning
+astrarecon scan example.com --clear
+
+# Run a lightweight quick scan
+astrarecon scan example.com --workflow fast
+
+# Run passive reconnaissance only
+astrarecon scan example.com --workflow passive
+```
+
+### Resume & Continuous Recon
+
+```bash
+# Resume an interrupted or failed session
+astrarecon scan example.com --resume 2026-09-26-001-example-com
+
+# Continuous recon: scan only newly discovered assets since last baseline
+astrarecon scan example.com --diff-only
+```
+
+### Proxying & Scope Control
+
+```bash
+# Route all scanner network traffic through upstream HTTP or SOCKS5 proxy
+astrarecon scan example.com --proxy http://127.0.0.1:8080
+
+# Inject custom headers (e.g. authorization or bug bounty verification headers)
+astrarecon scan example.com -H "X-Bug-Bounty: hackerone-handle"
+
+# Strict scope enforcement
+astrarecon scan example.com --scope-include ".*\.example\.com$" --scope-exclude ".*\.internal\.example\.com$"
+```
+
+### Output & File Export
+
+```bash
+# Save output to file (format auto-detected by extension: .json, .md, .csv)
 astrarecon scan example.com --output results.json
 astrarecon scan example.com --output report.md
 astrarecon scan example.com --output data.csv
 
-# Resume an interrupted scan — no re-running finished nodes
-astrarecon scan example.com --resume 2026-09-26-001-example-com
-
-# Scan only newly discovered assets since the last baseline
-astrarecon scan example.com --diff-only
-
-# Check environment and tool health
-astrarecon doctor
-
-# Self-update to the latest stable release
-astrarecon update
-astrarecon update --check            # dry-run: check only, don't install
-astrarecon update --source github    # bleeding-edge from GitHub main
-
-# List and manage sessions
-astrarecon sessions list
-astrarecon sessions inspect <session-id>
-
-# Export results from any completed session
-astrarecon export results <session-id>
-astrarecon export results <session-id> --output report.md
-astrarecon export ai <session-id>    # regenerate AI bundle
-
-# Inspect plugins and CAS storage
-astrarecon plugins list
-astrarecon cache stats
+# View summary card only, omitting terminal result tables
+astrarecon scan example.com --no-results
 ```
 
 ---
 
-## Results & Exports
+## Session Management
 
-### Scan Results
-
-After every scan, AstraRecon renders real results in the terminal automatically — no AI export required:
-
-- **Subdomains table** — full deduplicated list from all enumeration tools
-- **Live HTTP hosts** — URL, status code, title, and detected technologies
-- **Vulnerability findings** — severity, template name, host, and matched location
-
-Use `--no-results` to skip the tables and show the summary card only.
-
-### Save Results to a File
+AstraRecon stores all session metadata, node checkpoints, logs, and artifacts in `~/.astrarecon/sessions/`.
 
 ```bash
-astrarecon scan example.com --output results.json   # full JSON
-astrarecon scan example.com --output report.md      # Markdown tables
-astrarecon scan example.com --output data.csv       # CSV
+# List all recorded sessions with age, status, and progress
+astrarecon sessions list
+
+# Inspect detailed checkpoint breakdown and failure logs for a session
+astrarecon sessions inspect <session-id>
+
+# Clear all recorded scan sessions and reclaim disk space
+astrarecon sessions clear
+
+# Clear sessions for a specific target only
+astrarecon sessions clear --target example.com
+
+# Force clear without confirmation prompt
+astrarecon sessions clear --force
+
+# Delete a single specific session
+astrarecon sessions delete <session-id>
+
+# Prune sessions older than N days or delete failed/interrupted runs
+astrarecon sessions prune --days 7
+astrarecon sessions prune --failed-only
 ```
 
-Format is auto-detected from the file extension. Override with `--output-format json|md|csv`.
+---
 
-### Export from a Past Session
+## AI Distillation Bundle
+
+Every completed scan automatically distills raw security artifacts into an LLM-optimized prompt bundle located at `~/.astrarecon/sessions/<session-id>/exports/ai/`:
+
+| Artifact | Purpose |
+| :--- | :--- |
+| `context.json` | Target scope, CIDR ranges, root domains, and environment fingerprint |
+| `findings.json` | Triaged vulnerabilities by severity with reproducible `curl` validation commands |
+| `js_manifest.json` | Extracted API endpoints, hardcoded tokens, and routes from JavaScript files |
+| `prompt.md` | Pre-populated system prompt designed for **GPT-4o**, **Claude 3.5 Sonnet**, and **Gemini 1.5 Pro** without exceeding token budgets |
+
+To re-export or inspect an AI bundle for a past session:
 
 ```bash
-# Show results for any completed session
-astrarecon export results <session-id>
-astrarecon export results <session-id> --output report.md
-
-# Re-generate the AI distillation bundle
 astrarecon export ai <session-id>
 ```
 
-### AI Distillation Bundle
-
-Every completed scan also generates a structured AI export bundle under `<session_dir>/exports/ai/`:
-
-| File | Contents |
-| :--- | :--- |
-| `context.json` | Target scope, CIDR ranges, root domains, and environment fingerprint |
-| `findings.json` | Triaged vulnerabilities by severity with reproducible `curl` commands |
-| `js_manifest.json` | Extracted endpoints, hardcoded tokens, and API routes from JavaScript files |
-| `prompt.md` | Pre-populated system prompt with distilled attack surface data for LLM triage |
-
-Designed to feed **GPT-4o**, **Claude 3.5 Sonnet**, and **Gemini 1.5 Pro** without blowing token budgets.
-
 ---
 
-## Documentation
+## Updating AstraRecon
 
-| Document | Description |
-| :--- | :--- |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | DAG scheduler, Kahn's algorithm, process isolation, and CAS caching |
-| [SPECIFICATION.md](SPECIFICATION.md) | Plugin manifest schema, workflow YAML syntax, and session state machines |
-| [ROADMAP.md](ROADMAP.md) | Development milestones, deliverables, and future horizons |
-
----
-
-## Development
+AstraRecon includes a built-in smart updater that detects whether your environment is managed by `uv tool`, `pipx`, or standard `pip`:
 
 ```bash
-# Run the test suite
-python -m pytest -v
+# Update to latest stable release from PyPI
+astrarecon update
 
-# Build distribution artifacts
+# Check for updates without installing
+astrarecon update --check
+
+# Install latest bleeding-edge commit directly from GitHub main
+astrarecon update --source github
+```
+
+---
+
+## Contributing & Testing
+
+```bash
+# Run the complete test suite (35 unit and integration tests)
+uv run --with pytest --with pytest-asyncio pytest tests/
+
+# Build distribution bundle
 python -m build
 
-# Validate distributions
+# Validate package distribution
 python -m twine check dist/*
 ```
 
-CI runs the full test suite and validates distribution artifacts on every push and pull request.
-
----
-
-## Contributing
-
-Pull requests are welcome. For significant changes, open an issue first to discuss what you'd like to change. Ensure all tests pass and new functionality is covered before submitting a PR.
+Pull requests and issues are welcome! For major pipeline changes or new plugins, please open an issue first to discuss the design.
 
 ---
 
 ## License
 
-MIT © 2026 [LavSarkari](https://github.com/LavSarkari)
-
----
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more information.
 
 <p align="center">
-  <sub>Built for security engineers who want reconnaissance to behave like a workflow — not a pile of shell scripts.</sub>
+  <sub>Built with ❤️ by <a href="https://github.com/LavSarkari">LavSarkari</a> for security engineers who want reconnaissance to behave like a resilient workflow.</sub>
 </p>

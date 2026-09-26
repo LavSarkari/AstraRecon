@@ -211,14 +211,28 @@ class ExecutionEngine:
                 self.checkpoints[node_id] = checkpoint
                 self.session_manager.save_checkpoint(self.session_dir, checkpoint)
 
-                # Compute discovered item count
+                # Compute discovered item count and write companion _urls.txt if JSONL contains URLs
                 total_items = 0
                 for v in outputs.values():
                     p = Path(v.path)
                     if p.is_file():
                         try:
                             with open(p, "r", encoding="utf-8", errors="ignore") as f:
-                                total_items += sum(1 for line in f if line.strip())
+                                lines = [line.strip() for line in f if line.strip()]
+                                total_items += len(lines)
+                                if p.suffix == ".jsonl":
+                                    urls = []
+                                    for line in lines:
+                                        try:
+                                            d = json.loads(line)
+                                            u = d.get("url") or d.get("host")
+                                            if u and isinstance(u, str) and u.startswith("http"):
+                                                urls.append(u)
+                                        except Exception:
+                                            pass
+                                    if urls:
+                                        companion = p.with_name(f"{p.stem}_urls.txt")
+                                        companion.write_text("\n".join(urls) + "\n", encoding="utf-8")
                         except Exception:
                             pass
 
@@ -425,6 +439,9 @@ class ExecutionEngine:
 
         for edge in self.graph.in_edges[node.id]:
             artifact_path = self.node_artifacts[edge.source][edge.source_port]
+            companion = artifact_path.with_name(f"{artifact_path.stem}_urls.txt")
+            if companion.exists() and companion.stat().st_size > 0:
+                artifact_path = companion
             inputs_dict[edge.target_port] = str(artifact_path)
             # Read first 8KB or sha256 of input artifact
             if artifact_path.exists():

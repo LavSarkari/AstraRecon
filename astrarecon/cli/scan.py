@@ -21,7 +21,7 @@ from astrarecon.core.cache.cas import ContentAddressedStore
 from astrarecon.core.doctor.inspector import EnvironmentInspector
 from astrarecon.core.execution.runner import ExecutionEngine
 from astrarecon.core.models.session import EnvFingerprint, NodeExecutionStatus, SessionStatus
-from astrarecon.core.models.workflow import EdgeDefinition, NodeDefinition, WorkflowDefinition
+from astrarecon.core.models.workflow import EdgeDefinition, NodeDefinition, WorkflowDefinition, WorkflowScope
 from astrarecon.core.plugins.loader import PluginLoader
 from astrarecon.core.reports.ai_export import AIDistillationEngine
 from astrarecon.core.reports.output_writer import OutputFormat, OutputWriter
@@ -87,6 +87,118 @@ def _show_completed_session_results(
     con.print("")
     con.print(summary)
     ScanResultsRenderer.render_all(scan_results, limit=True)
+
+
+def build_workflow(
+    target: str,
+    preset: str = "default",
+    scope_include: Optional[str] = None,
+    scope_exclude: Optional[str] = None,
+) -> WorkflowDefinition:
+    """Builds a comprehensive or preset-specific WorkflowDefinition DAG."""
+    preset = (preset or "default").lower().strip()
+    scope = WorkflowScope(
+        auto_enforce_root=True,
+        include_patterns=[scope_include] if scope_include else [],
+        exclude_patterns=[scope_exclude] if scope_exclude else [],
+    )
+
+    if preset == "fast":
+        nodes = [
+            NodeDefinition(id="target_input", type="builtin.target_input", config={"raw_input": target}),
+            NodeDefinition(id="scope_guard", type="builtin.scope_guard", config={}),
+            NodeDefinition(id="subfinder", type="plugin.subfinder", config={}),
+            NodeDefinition(id="dnsx", type="plugin.dnsx", config={}),
+            NodeDefinition(id="httpx", type="plugin.httpx", config={}),
+        ]
+        edges = [
+            EdgeDefinition(source="target_input", source_port="output", target="scope_guard", target_port="input"),
+            EdgeDefinition(source="scope_guard", source_port="in_scope", target="subfinder", target_port="target"),
+            EdgeDefinition(source="subfinder", source_port="subdomains", target="dnsx", target_port="hosts"),
+            EdgeDefinition(source="dnsx", source_port="valid_hosts", target="httpx", target_port="targets"),
+        ]
+        wf_name = f"Fast recon for {target}"
+
+    elif preset == "passive":
+        nodes = [
+            NodeDefinition(id="target_input", type="builtin.target_input", config={"raw_input": target}),
+            NodeDefinition(id="scope_guard", type="builtin.scope_guard", config={}),
+            NodeDefinition(id="subfinder", type="plugin.subfinder", config={}),
+            NodeDefinition(id="assetfinder", type="plugin.assetfinder", config={}),
+            NodeDefinition(id="amass", type="plugin.amass", config={}),
+            NodeDefinition(id="union_dedupe", type="builtin.union_dedupe", config={}),
+            NodeDefinition(id="gau", type="plugin.gau", config={}),
+        ]
+        edges = [
+            EdgeDefinition(source="target_input", source_port="output", target="scope_guard", target_port="input"),
+            EdgeDefinition(source="scope_guard", source_port="in_scope", target="subfinder", target_port="target"),
+            EdgeDefinition(source="scope_guard", source_port="in_scope", target="assetfinder", target_port="target"),
+            EdgeDefinition(source="scope_guard", source_port="in_scope", target="amass", target_port="target"),
+            EdgeDefinition(source="scope_guard", source_port="in_scope", target="gau", target_port="target"),
+            EdgeDefinition(source="subfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
+            EdgeDefinition(source="assetfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
+            EdgeDefinition(source="amass", source_port="subdomains", target="union_dedupe", target_port="inputs"),
+        ]
+        wf_name = f"Passive recon for {target}"
+
+    elif preset == "vuln":
+        nodes = [
+            NodeDefinition(id="target_input", type="builtin.target_input", config={"raw_input": target}),
+            NodeDefinition(id="scope_guard", type="builtin.scope_guard", config={}),
+            NodeDefinition(id="subfinder", type="plugin.subfinder", config={}),
+            NodeDefinition(id="dnsx", type="plugin.dnsx", config={}),
+            NodeDefinition(id="httpx", type="plugin.httpx", config={}),
+            NodeDefinition(id="nuclei", type="plugin.nuclei", config={}),
+        ]
+        edges = [
+            EdgeDefinition(source="target_input", source_port="output", target="scope_guard", target_port="input"),
+            EdgeDefinition(source="scope_guard", source_port="in_scope", target="subfinder", target_port="target"),
+            EdgeDefinition(source="subfinder", source_port="subdomains", target="dnsx", target_port="hosts"),
+            EdgeDefinition(source="dnsx", source_port="valid_hosts", target="httpx", target_port="targets"),
+            EdgeDefinition(source="httpx", source_port="endpoints", target="nuclei", target_port="targets"),
+        ]
+        wf_name = f"Vulnerability assessment for {target}"
+
+    else:
+        # Default / Full comprehensive reconnaissance & vulnerability pipeline
+        nodes = [
+            NodeDefinition(id="target_input", type="builtin.target_input", config={"raw_input": target}),
+            NodeDefinition(id="scope_guard", type="builtin.scope_guard", config={}),
+            NodeDefinition(id="subfinder", type="plugin.subfinder", config={}),
+            NodeDefinition(id="assetfinder", type="plugin.assetfinder", config={}),
+            NodeDefinition(id="amass", type="plugin.amass", config={}),
+            NodeDefinition(id="union_dedupe", type="builtin.union_dedupe", config={}),
+            NodeDefinition(id="dnsx", type="plugin.dnsx", config={}),
+            NodeDefinition(id="naabu", type="plugin.naabu", config={}),
+            NodeDefinition(id="httpx", type="plugin.httpx", config={}),
+            NodeDefinition(id="gau", type="plugin.gau", config={}),
+            NodeDefinition(id="katana", type="plugin.katana", config={}),
+            NodeDefinition(id="nuclei", type="plugin.nuclei", config={}),
+        ]
+        edges = [
+            EdgeDefinition(source="target_input", source_port="output", target="scope_guard", target_port="input"),
+            EdgeDefinition(source="scope_guard", source_port="in_scope", target="subfinder", target_port="target"),
+            EdgeDefinition(source="scope_guard", source_port="in_scope", target="assetfinder", target_port="target"),
+            EdgeDefinition(source="scope_guard", source_port="in_scope", target="amass", target_port="target"),
+            EdgeDefinition(source="subfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
+            EdgeDefinition(source="assetfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
+            EdgeDefinition(source="amass", source_port="subdomains", target="union_dedupe", target_port="inputs"),
+            EdgeDefinition(source="union_dedupe", source_port="output", target="dnsx", target_port="hosts"),
+            EdgeDefinition(source="dnsx", source_port="valid_hosts", target="naabu", target_port="hosts"),
+            EdgeDefinition(source="dnsx", source_port="valid_hosts", target="httpx", target_port="targets"),
+            EdgeDefinition(source="scope_guard", source_port="in_scope", target="gau", target_port="target"),
+            EdgeDefinition(source="httpx", source_port="endpoints", target="katana", target_port="endpoints"),
+            EdgeDefinition(source="httpx", source_port="endpoints", target="nuclei", target_port="targets"),
+        ]
+        wf_name = f"Full recon scan for {target}"
+
+    return WorkflowDefinition(
+        id=f"scan-{target}",
+        name=wf_name,
+        scope=scope,
+        nodes=nodes,
+        edges=edges,
+    )
 
 
 @app.callback(invoke_without_command=True)
@@ -306,28 +418,12 @@ def run_scan(
             wf = WorkflowDefinition.model_validate_json(f.read())
         is_resume = True
     else:
-        # Standard default reconnaissance workflow
-        wf = WorkflowDefinition(
-            id=f"scan-{target}",
-            name=f"Recon scan for {target}",
-            nodes=[
-                NodeDefinition(id="target_input", type="builtin.target_input", config={"raw_input": target}),
-                NodeDefinition(id="scope_guard", type="builtin.scope_guard", config={}),
-                NodeDefinition(id="subfinder", type="plugin.subfinder", config={}),
-                NodeDefinition(id="assetfinder", type="plugin.assetfinder", config={}),
-                NodeDefinition(id="union_dedupe", type="builtin.union_dedupe", config={}),
-                NodeDefinition(id="dnsx", type="plugin.dnsx", config={}),
-                NodeDefinition(id="httpx", type="plugin.httpx", config={}),
-            ],
-            edges=[
-                EdgeDefinition(source="target_input", source_port="output", target="scope_guard", target_port="input"),
-                EdgeDefinition(source="scope_guard", source_port="in_scope", target="subfinder", target_port="target"),
-                EdgeDefinition(source="scope_guard", source_port="in_scope", target="assetfinder", target_port="target"),
-                EdgeDefinition(source="subfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
-                EdgeDefinition(source="assetfinder", source_port="subdomains", target="union_dedupe", target_port="inputs"),
-                EdgeDefinition(source="union_dedupe", source_port="output", target="dnsx", target_port="hosts"),
-                EdgeDefinition(source="dnsx", source_port="valid_hosts", target="httpx", target_port="targets"),
-            ],
+        # Build workflow DAG based on preset (default = full comprehensive pipeline)
+        wf = build_workflow(
+            target=target,
+            preset=workflow,
+            scope_include=scope_include,
+            scope_exclude=scope_exclude,
         )
         session_dir = session_mgr.create_session(target=target, workflow=wf, fingerprint=fp)
         is_resume = False

@@ -29,6 +29,8 @@ execution:
     - "-list"
     - "{inputs.targets}"
     - "-silent"
+    - "-duc"
+    - "-as"
     - "-j"
     - "-o"
     - "{outputs.findings}"

@@ -134,6 +134,23 @@ class EnvironmentInspector:
         else:
             binary_path = shutil.which(name)
 
+        # Check user bin directories (~/go/bin, ~/.local/bin, $GOPATH/bin)
+        if not binary_path:
+            user_dirs = [
+                Path.home() / "go" / "bin",
+                Path.home() / ".local" / "bin",
+            ]
+            gopath = os.environ.get("GOPATH")
+            if gopath:
+                user_dirs.insert(0, Path(gopath) / "bin")
+            for udir in user_dirs:
+                for candidate in [udir / name, udir / f"{name}.exe", udir / f"{name}.bat"]:
+                    if candidate.is_file():
+                        binary_path = str(candidate.resolve())
+                        break
+                if binary_path:
+                    break
+
         if not binary_path:
             return ToolStatus(name=name, installed=False)
 
@@ -143,6 +160,16 @@ class EnvironmentInspector:
         try:
             res = subprocess.run([binary_path] + args, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=5)
             output = (res.stdout + " " + res.stderr).strip()
+
+            # Disqualify conflicting Python httpx CLI package
+            if name == "httpx" and ("no such option" in output.lower() or "next generation http client" in output.lower()):
+                return ToolStatus(
+                    name=name,
+                    installed=False,
+                    path=binary_path,
+                    error="Conflicting Python 'httpx' client detected instead of ProjectDiscovery httpx",
+                )
+
             match = re.search(regex, output, re.IGNORECASE)
             if match:
                 version = match.group(1) if match.groups() else match.group(0)

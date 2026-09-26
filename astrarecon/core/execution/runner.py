@@ -86,19 +86,42 @@ class ExecutionEngine:
         snapshot.status = SessionStatus.RUNNING
         self.session_manager.save_session_snapshot(self.session_dir, snapshot)
 
-        # If resuming, load existing checkpoints
+        # If resuming, load existing checkpoints and keep only valid completed nodes
         if resume:
             self.checkpoints = self.session_manager.load_checkpoints(self.session_dir)
+            valid_completed: set[str] = set()
             for node_id, cp in self.checkpoints.items():
-                if cp.status == NodeExecutionStatus.COMPLETED:
-                    self.completed_nodes.add(node_id)
-                    # Restore artifact paths
-                    self.node_artifacts[node_id] = {
-                        port: Path(ref.path) for port, ref in cp.outputs.items()
-                    }
-                    self._update_node_status(node_id, NodeExecutionStatus.COMPLETED)
-                elif cp.status == NodeExecutionStatus.FAILED:
-                    self.failed_nodes.add(node_id)
+                if cp.status == NodeExecutionStatus.COMPLETED and cp.outputs:
+                    all_exist = all(Path(ref.path).exists() for ref in cp.outputs.values())
+                    if all_exist:
+                        valid_completed.add(node_id)
+
+            # In a DAG, a completed node can only be reused if ALL its upstream dependencies
+            # are also in valid_completed. If an upstream dependency is missing, failed,
+            # or needs to re-run, downstream nodes must also re-run to process complete data.
+            pruned = True
+            while pruned:
+                pruned = False
+                for node_id in list(valid_completed):
+                    upstream = self.graph.get_upstream_node_ids(node_id)
+                    if upstream and not upstream.issubset(valid_completed):
+                        valid_completed.remove(node_id)
+                        pruned = True
+
+            for node_id in valid_completed:
+                cp = self.checkpoints[node_id]
+                self.completed_nodes.add(node_id)
+                self.node_artifacts[node_id] = {
+                    port: Path(ref.path) for port, ref in cp.outputs.items()
+                }
+                cnt = sum(ref.line_count or 0 for ref in cp.outputs.values())
+                dur_msg = f"{cp.duration_seconds:.1f}s" if cp.duration_seconds is not None else None
+                self._update_node_status(
+                    node_id,
+                    NodeExecutionStatus.COMPLETED,
+                    item_count=cnt if cnt > 0 else None,
+                    message=dur_msg,
+                )
 
         try:
             while (len(self.completed_nodes) + len(self.failed_nodes)) < len(self.graph.nodes):
@@ -132,7 +155,7 @@ class ExecutionEngine:
                 snapshot.status = SessionStatus.COMPLETED
                 snapshot.progress_percentage = 100.0
             elif self.failed_nodes:
-                snapshot.status = SessionStatus.COMPLETED if self.completed_nodes else SessionStatus.FAILED
+                snapshot.status = SessionStatus.FAILED
                 snapshot.progress_percentage = (len(self.completed_nodes) / max(len(self.graph.nodes), 1)) * 100.0
             else:
                 snapshot.status = SessionStatus.INTERRUPTED
@@ -338,18 +361,13 @@ class ExecutionEngine:
             if bp.is_file():
                 return str(bp.resolve())
 
-        # 3. Check system PATH
-        which_path = shutil.which(cmd)
-        if which_path:
-            return which_path
-
-        # 4. Check ~/.astrarecon/bin/ (managed binaries)
+        # 3. Check ~/.astrarecon/bin/ (managed binaries take priority)
         managed_bin = Path.home() / ".astrarecon" / "bin"
         for candidate in [managed_bin / cmd, managed_bin / f"{cmd}.exe"]:
             if candidate.is_file():
                 return str(candidate.resolve())
 
-        # 5. Check standard Go bin paths (~/go/bin or $GOPATH/bin)
+        # 4. Check standard Go bin paths (~/go/bin or $GOPATH/bin)
         gopath = os.environ.get("GOPATH")
         go_dirs = [Path(gopath) / "bin" if gopath else None, Path.home() / "go" / "bin"]
         for gdir in go_dirs:
@@ -357,6 +375,20 @@ class ExecutionEngine:
                 for candidate in [gdir / cmd, gdir / f"{cmd}.exe"]:
                     if candidate.is_file():
                         return str(candidate.resolve())
+
+        # 5. Check system PATH
+        which_path = shutil.which(cmd)
+        if which_path:
+            # Prevent conflicting Python httpx package CLI from masquerading as ProjectDiscovery httpx
+            if cmd == "httpx":
+                try:
+                    chk = subprocess.run([which_path, "-version"], capture_output=True, text=True, timeout=2)
+                    if "projectdiscovery" in (chk.stdout + chk.stderr).lower() or chk.returncode == 0:
+                        return which_path
+                except Exception:
+                    pass
+            else:
+                return which_path
 
         # 6. Check binary name alias if distinct from command
         if manifest.binary and manifest.binary.name != cmd:
@@ -472,17 +504,16 @@ class ExecutionEngine:
         cmd_args = [self._resolve_executable_path(manifest)]
         for arg in manifest.execution.args:
             resolved_arg = arg
-            # Replace inputs (support single-domain content substitution for tools expecting domain string)
+            # Replace inputs (use string content for source="param", file path for source="artifact")
             for in_key, in_val in inputs_dict.items():
-                if in_key in inputs_content:
-                    is_target_input = any(
-                        inp.name == in_key and str(inp.type).lower() in ("targetdomain", "targeturl", "fqdn")
-                        for inp in manifest.inputs
-                    )
-                    if is_target_input or resolved_arg == f"{{inputs.{in_key}}}":
-                        resolved_arg = resolved_arg.replace(f"{{inputs.{in_key}}}", inputs_content[in_key])
-                        continue
-                resolved_arg = resolved_arg.replace(f"{{inputs.{in_key}}}", in_val)
+                is_param_input = any(
+                    inp.name == in_key and getattr(inp, "source", "param") == "param"
+                    for inp in manifest.inputs
+                )
+                if is_param_input and in_key in inputs_content:
+                    resolved_arg = resolved_arg.replace(f"{{inputs.{in_key}}}", inputs_content[in_key])
+                else:
+                    resolved_arg = resolved_arg.replace(f"{{inputs.{in_key}}}", in_val)
             # Replace outputs
             for out_key, out_val in output_substitutions.items():
                 resolved_arg = resolved_arg.replace(f"{{outputs.{out_key}}}", out_val)

@@ -202,18 +202,25 @@ def run_scan(
 
                 table.add_row(Text(f"[{idx}]", style="bold #1DA1FF"), s_dir.name, age, status_style, stages_str)
 
-            # Check whether the latest session is resumable (not fully completed)
+            # Check whether the latest session is truly completed (all stages done)
             latest_dir, latest_snap = existing_sessions[0]
-            latest_is_done = latest_snap.status == SessionStatus.COMPLETED
+            latest_cps = session_mgr.load_checkpoints(latest_dir)
+            latest_completed = sum(1 for c in latest_cps.values() if c.status == NodeExecutionStatus.COMPLETED)
+            latest_total = max(len(latest_cps), 7)
+            latest_is_done = (latest_snap.status == SessionStatus.COMPLETED) and (latest_completed >= latest_total)
 
             menu_text = Text()
             menu_text.append("\n  Actions:\n", style="bold white")
             if latest_is_done:
                 menu_text.append("  [v] ", style="bold #22C55E")
                 menu_text.append(f"View results for latest session ({latest_dir.name})\n", style="white")
+                menu_text.append("  [r] ", style="bold #1DA1FF")
+                menu_text.append(f"Resume / re-run latest session ({latest_dir.name})\n", style="white")
             else:
                 menu_text.append("  [r] ", style="bold #1DA1FF")
                 menu_text.append(f"Resume latest session ({latest_dir.name})\n", style="white")
+                menu_text.append("  [v] ", style="bold #22C55E")
+                menu_text.append(f"View results collected so far ({latest_dir.name})\n", style="white")
             menu_text.append("  [f] ", style="bold #1DA1FF")
             menu_text.append("Start a fresh scan (create new session)\n", style="white")
             if len(existing_sessions) > 1:
@@ -223,7 +230,7 @@ def run_scan(
             menu_text.append("Cancel and exit\n", style="white")
 
             default_action = "v" if latest_is_done else "r"
-            prompt_hint = "v=view results, f=fresh" if latest_is_done else "r=resume, f=fresh"
+            prompt_hint = "v=view results, r=resume, f=fresh" if latest_is_done else "r=resume, v=view results, f=fresh"
             if len(existing_sessions) > 1:
                 prompt_hint += ", 1-N=select"
             prompt_hint += ", q=quit"
@@ -257,16 +264,18 @@ def run_scan(
                         resume = None  # Will create a fresh session below
                     elif choice.isdigit() and 1 <= int(choice) <= len(existing_sessions[:5]):
                         chosen_dir, chosen_snap = existing_sessions[int(choice) - 1]
-                        if chosen_snap.status == SessionStatus.COMPLETED:
-                            # View results for this completed session inline
+                        cps = session_mgr.load_checkpoints(chosen_dir)
+                        c_cps = sum(1 for c in cps.values() if c.status == NodeExecutionStatus.COMPLETED)
+                        if chosen_snap.status == SessionStatus.COMPLETED and c_cps >= max(len(cps), 7):
                             _show_completed_session_results(chosen_dir, chosen_snap, target, session_mgr, console)
                             raise typer.Exit(code=0)
                         else:
                             resume = chosen_dir.name
-                    elif choice in ("v", "view") and latest_is_done:
-                        # Show results for the completed session without re-running
+                    elif choice in ("v", "view"):
                         _show_completed_session_results(latest_dir, latest_snap, target, session_mgr, console)
                         raise typer.Exit(code=0)
+                    elif choice in ("r", "resume"):
+                        resume = latest_dir.name
                     else:
                         # Default: resume for incomplete, view results for completed
                         if latest_is_done:
@@ -284,7 +293,7 @@ def run_scan(
                     raise typer.Exit(code=0)
                 else:
                     resume = latest_dir.name
-                    console.print(f"[dim]Non-interactive environment detected. Resuming latest session: {resume}[/dim]\n")
+                    console.print(f"[dim]Non-interactive environment detected. Resuming session: {resume}[/dim]\n")
 
     if resume:
         session_dir = session_mgr.base_dir / resume
@@ -345,17 +354,6 @@ def run_scan(
         node_labels=node_labels,
     )
 
-    if is_resume:
-        existing_cps = session_mgr.load_checkpoints(session_dir)
-        for nid, cp in existing_cps.items():
-            if cp.status == NodeExecutionStatus.COMPLETED:
-                cnt = sum(ref.line_count or 0 for ref in cp.outputs.values())
-                status_panel.update_status(
-                    nid,
-                    NodeExecutionStatus.COMPLETED,
-                    item_count=cnt if cnt > 0 else None,
-                    duration=cp.duration_seconds,
-                )
 
     start_time = time.time()
 

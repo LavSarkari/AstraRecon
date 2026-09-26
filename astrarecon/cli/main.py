@@ -33,6 +33,7 @@ from astrarecon.cli.cache import app as cache_app
 from astrarecon.cli.plugins import app as plugins_app
 from astrarecon.cli.scan import app as scan_app
 from astrarecon.cli.update import app as update_app
+from astrarecon.cli.console import app as console_app
 
 app = typer.Typer(
     name="astrarecon",
@@ -42,6 +43,7 @@ app = typer.Typer(
 console = Console(legacy_windows=False)
 
 # Register subcommands
+app.add_typer(console_app, name="console")
 app.add_typer(scan_app, name="scan")
 app.add_typer(doctor_app, name="doctor")
 app.add_typer(sessions_app, name="sessions")
@@ -67,6 +69,9 @@ def help_callback(ctx: typer.Context, value: bool):
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
+    interactive: bool = typer.Option(
+        False, "--interactive", "-i", help="Launch interactive Metasploit-style console."
+    ),
     version: Optional[bool] = typer.Option(
         None, "--version", "-v", callback=version_callback, is_eager=True, help="Show version and exit."
     ),
@@ -76,6 +81,10 @@ def main(
 ):
     """AstraRecon: Visual Recon Workflow Engine."""
     if ctx.invoked_subcommand is None:
+        if interactive:
+            from astrarecon.cli.console import run_console
+            run_console()
+            raise typer.Exit()
         from astrarecon.cli.ui.startup import StartupView
         console.print(StartupView.render())
 

@@ -70,6 +70,11 @@ class HelpMenuView:
         cmd_table.add_column("Description", style=f"{COLOR_SECONDARY}")
 
         cmd_table.add_row(
+            "console",
+            "[-i / --interactive]",
+            "Interactive Metasploit-style console (msfconsole user experience)",
+        )
+        cmd_table.add_row(
             "scan",
             "<target> [flags]",
             "Execute automated multi-tool DAG reconnaissance scan",

@@ -234,7 +234,42 @@ astrarecon doctor --install-missing
 
 ## Usage Guide
 
-### Basic Scanning
+### Interactive Console (`msfconsole` Experience)
+
+AstraRecon features an interactive REPL shell with persistent history, Tab auto-completion, and Metasploit-style module and options management:
+
+```bash
+# Launch interactive console
+astrarecon console
+
+# Or with short flag
+astrarecon -i
+```
+
+Inside the interactive shell:
+
+```text
+astrarecon (workflow/default) > show options
+astrarecon (workflow/default) > set TARGET example.com
+astrarecon (workflow/default) > set PROXY http://127.0.0.1:8080
+astrarecon (workflow/default) > use workflow/fast
+astrarecon (workflow/fast) > run
+```
+
+Supported console commands:
+- `use <workflow | plugin>` — Select active module context (`workflow/fast`, `plugin/nuclei`, etc.)
+- `set <OPTION> <VALUE>` — Configure target, proxy, tools, profile, or scope
+- `show options` — Inspect all current parameters and requirements
+- `show workflows` / `show plugins` / `show sessions` — View presets, plugins, and scan history
+- `run` / `scan` / `exploit` — Execute the active recon workflow
+- `sessions -i <id>` — Inspect past scan checkpoints and error logs
+- `export ai <id>` — Generate LLM prompt bundle from past session
+- `doctor` — Run environment diagnostic check
+- `back` — Return to root prompt context
+
+---
+
+### Basic Scanning (CLI)
 
 ```bash
 # Full 12-stage automated reconnaissance

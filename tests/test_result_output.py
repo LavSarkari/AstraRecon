@@ -103,7 +103,7 @@ class TestOutputWriter:
     def test_write_markdown(self, tmp_path):
         out = tmp_path / "results.md"
         OutputWriter.write(self._make_results(), out)
-        content = out.read_text()
+        content = out.read_text(encoding="utf-8")
         assert "# AstraRecon — example.com" in content
         assert "## Subdomains" in content
         assert "## Live HTTP Hosts" in content

@@ -72,14 +72,61 @@ class ScanResultLoader:
         if not artifacts_dir.exists():
             return results
 
-        # --- Subdomains: plain text files from subfinder / assetfinder / union_dedupe ---
-        for txt_file in artifacts_dir.glob("*.txt"):
-            lines = ScanResultLoader._read_lines(txt_file)
-            if lines and not results.subdomains:
-                results.subdomains = lines
-            elif lines and len(lines) > len(results.subdomains):
-                # Prefer the largest deduplicated set (union_dedupe output)
-                results.subdomains = lines
+        clean_target = target.lower().strip().replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
+
+        def _is_valid_fqdn(candidate: str) -> bool:
+            c = candidate.lower().strip()
+            if not c or "/" in c or " " in c or ":" in c or "\\" in c or "'" in c or '"' in c:
+                return False
+            if "." not in c:
+                return False
+            # Check domain boundary relation to target
+            if c == clean_target or c.endswith("." + clean_target):
+                return True
+            return False
+
+        # --- Subdomains: plain text files from union_dedupe / subfinder / assetfinder / amass ---
+        subdomain_candidates: set[str] = set()
+
+        # 1. Prefer deduplicated outputs from union_dedupe
+        dedupe_files = list(artifacts_dir.glob("*union_dedupe*.txt")) + list(artifacts_dir.glob("*dedupe*.txt"))
+        if dedupe_files:
+            for df in dedupe_files:
+                for line in ScanResultLoader._read_lines(df):
+                    if _is_valid_fqdn(line):
+                        subdomain_candidates.add(line.lower())
+
+        # 2. Supplement or fallback to specific subdomain discovery tool files
+        if not subdomain_candidates:
+            subdomain_patterns = [
+                "*subfinder*.txt",
+                "*assetfinder*.txt",
+                "*amass*.txt",
+                "*findomain*.txt",
+                "*subdomains*.txt",
+                "*resolved_hosts*.txt",
+            ]
+            for pattern in subdomain_patterns:
+                for txt_file in artifacts_dir.glob(pattern):
+                    # Never load crawled URL files as subdomains
+                    stem = txt_file.stem.lower()
+                    if "url" in stem or "port" in stem:
+                        continue
+                    for line in ScanResultLoader._read_lines(txt_file):
+                        if _is_valid_fqdn(line):
+                            subdomain_candidates.add(line.lower())
+
+        # 3. Fallback: inspect any text files while strictly filtering out URLs and invalid domains
+        if not subdomain_candidates:
+            for txt_file in artifacts_dir.glob("*.txt"):
+                stem = txt_file.stem.lower()
+                if any(x in stem for x in ("url", "port", "target", "log")):
+                    continue
+                for line in ScanResultLoader._read_lines(txt_file):
+                    if _is_valid_fqdn(line):
+                        subdomain_candidates.add(line.lower())
+
+        results.subdomains = sorted(list(subdomain_candidates))
 
         # --- Live hosts: httpx JSONL output ---
         for jl_file in sorted(artifacts_dir.glob("*.jsonl")):

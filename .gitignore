@@ -42,3 +42,4 @@ Thumbs.db
 *.cfg
 resume.cfg
 tmp/
+.playwright-mcp/

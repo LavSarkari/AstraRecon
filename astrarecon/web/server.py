@@ -54,7 +54,27 @@ class ScanController:
         self.subscribers: set[queue.Queue] = set()
         self._current_engine: Optional[ExecutionEngine] = None
         self._scan_thread: Optional[threading.Thread] = None
+        self._scan_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._main_scan_task: Optional[asyncio.Task] = None
+        self.active_nodes: list[dict[str, Any]] = []
+        self.active_edges: list[dict[str, Any]] = []
         self._stop_requested = False
+
+        # Hydrate latest session if present
+        try:
+            mgr = SessionManager()
+            if mgr.base_dir.exists():
+                candidates = sorted(
+                    [d for d in mgr.base_dir.iterdir() if d.is_dir() and (d / "session.json").exists()],
+                    key=lambda x: x.stat().st_mtime,
+                    reverse=True
+                )
+                if candidates:
+                    self.active_session_id = candidates[0].name
+                    snap = mgr.load_session_snapshot(candidates[0])
+                    self.active_target = snap.target
+        except Exception:
+            pass
 
     def subscribe(self) -> queue.Queue:
         q: queue.Queue = queue.Queue(maxsize=100)
@@ -138,6 +158,12 @@ class ScanController:
             if not is_valid:
                 return {"error": f"Invalid target: {err}"}
 
+            # Auto-merge disabled tools from configuration
+            cfg = _load_plugins_config()
+            active_disabled = list(cfg.get("disabled_tools", []))
+            if skip_tools:
+                active_disabled = list(set(active_disabled + skip_tools))
+
             self.is_scanning = True
             self.active_target = normalized
             self.active_workflow_id = workflow
@@ -154,7 +180,7 @@ class ScanController:
                 profile,
                 proxy,
                 custom_tools,
-                skip_tools,
+                active_disabled,
                 with_tools,
                 scope_include,
                 scope_exclude,
@@ -175,10 +201,18 @@ class ScanController:
             if not self.is_scanning:
                 return {"status": "not_running"}
             self._stop_requested = True
-            if self._current_engine and hasattr(self._current_engine, "worker_tasks"):
-                for task in list(self._current_engine.worker_tasks):
-                    task.cancel()
-        self.log("Cancellation signal received. Terminating workers...", level="warning")
+            if self._current_engine and hasattr(self._current_engine, "cancel"):
+                try:
+                    self._current_engine.cancel()
+                except Exception:
+                    pass
+            if self._scan_loop and self._scan_loop.is_running():
+                if self._main_scan_task and not self._main_scan_task.done():
+                    try:
+                        self._scan_loop.call_soon_threadsafe(self._main_scan_task.cancel)
+                    except Exception:
+                        pass
+        self.log("Mission abort signal acknowledged. Halting worker processes...", level="warning")
         return {"status": "stopping"}
 
     def _run_scan_thread(
@@ -195,6 +229,8 @@ class ScanController:
     ) -> None:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        with self.lock:
+            self._scan_loop = loop
 
         try:
             self.log(f"Assembling reconnaissance flight plan for target {target} ({preset})...")
@@ -213,6 +249,9 @@ class ScanController:
             plugin_registry = PluginLoader.load_all_plugins()
             env = EnvironmentInspector.inspect()
 
+            if self._stop_requested:
+                raise asyncio.CancelledError("Mission was aborted before engine dispatch.")
+
             fp = EnvFingerprint(
                 captured_at=datetime.utcnow(),
                 os_distro=env.os_name,
@@ -225,8 +264,28 @@ class ScanController:
             )
 
             session_dir = session_mgr.create_session(target=target, workflow=wf, fingerprint=fp)
+            nodes_data = [
+                {
+                    "id": n.id,
+                    "type": n.type,
+                    "label": n.id.replace("_", " ").title(),
+                }
+                for n in wf.nodes
+            ]
+            edges_data = [
+                {
+                    "source": e.source,
+                    "target": e.target,
+                    "source_port": e.source_port,
+                    "target_port": e.target_port,
+                }
+                for e in wf.edges
+            ]
+
             with self.lock:
                 self.active_session_id = session_dir.name
+                self.active_nodes = nodes_data
+                self.active_edges = edges_data
                 for n in wf.nodes:
                     self.node_statuses[n.id] = {
                         "status": "WAITING",
@@ -238,24 +297,12 @@ class ScanController:
                 "session_id": session_dir.name,
                 "target": target,
                 "workflow_id": wf.id,
-                "nodes": [
-                    {
-                        "id": n.id,
-                        "type": n.type,
-                        "label": n.id.replace("_", " ").title(),
-                    }
-                    for n in wf.nodes
-                ],
-                "edges": [
-                    {
-                        "source": e.source,
-                        "target": e.target,
-                        "source_port": e.source_port,
-                        "target_port": e.target_port,
-                    }
-                    for e in wf.edges
-                ],
+                "nodes": nodes_data,
+                "edges": edges_data,
             })
+
+            if self._stop_requested:
+                raise asyncio.CancelledError("Mission was aborted before engine dispatch.")
 
             workers = 3
             if profile == "safe":
@@ -282,9 +329,13 @@ class ScanController:
             )
             with self.lock:
                 self._current_engine = engine
+                self._main_scan_task = loop.create_task(engine.run(resume=False))
+                if self._stop_requested:
+                    engine.cancel()
+                    self._main_scan_task.cancel()
 
             self.log("Dispatching DAG workers onto topological frontiers...")
-            snapshot = loop.run_until_complete(engine.run(resume=False))
+            snapshot = loop.run_until_complete(self._main_scan_task)
 
             # Trigger AI distillation bundle export
             try:
@@ -314,8 +365,16 @@ class ScanController:
             )
 
         except (asyncio.CancelledError, KeyboardInterrupt):
-            self.log("Scan cancelled by user.", level="warning")
-            self.broadcast("scan_cancelled", {"target": target})
+            self.log("Mission aborted by operator.", level="warning")
+            with self.lock:
+                for nid, st in self.node_statuses.items():
+                    if st.get("status") in ("RUNNING", "WAITING"):
+                        st["status"] = "CANCELLED"
+                        st["message"] = "Aborted"
+            self.broadcast("scan_cancelled", {
+                "session_id": session_dir.name if 'session_dir' in locals() else None,
+                "target": target,
+            })
         except Exception as e:
             self.log(f"Scan execution error: {e}", level="error")
             self.broadcast("scan_error", {"error": str(e), "target": target})
@@ -323,13 +382,18 @@ class ScanController:
             with self.lock:
                 self.is_scanning = False
                 self._current_engine = None
+                self._main_scan_task = None
+                self._scan_loop = None
                 self._stop_requested = False
-            loop.close()
+            try:
+                loop.close()
+            except Exception:
+                pass
 
     def get_status(self) -> dict[str, Any]:
         with self.lock:
             elapsed = round(time.time() - self.start_time, 1) if self.start_time and self.is_scanning else 0.0
-            return {
+            data = {
                 "is_scanning": self.is_scanning,
                 "active_session_id": self.active_session_id,
                 "active_target": self.active_target,
@@ -338,6 +402,69 @@ class ScanController:
                 "node_statuses": dict(self.node_statuses),
                 "server_version": __version__,
             }
+            if self.is_scanning:
+                data["nodes"] = list(self.active_nodes)
+                data["edges"] = list(self.active_edges)
+            return data
+
+
+def _get_projects_file() -> Path:
+    p = Path.home() / ".astrarecon" / "projects.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _load_projects() -> list[dict[str, Any]]:
+    p = _get_projects_file()
+    if not p.exists():
+        default_proj = [
+            {
+                "id": "default",
+                "name": "Global Engagement",
+                "target": "example.com",
+                "disabled_tools": [],
+                "created_at": datetime.utcnow().isoformat(),
+                "last_run": None,
+            }
+        ]
+        _save_projects(default_proj)
+        return default_proj
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _save_projects(projects: list[dict[str, Any]]) -> None:
+    p = _get_projects_file()
+    p.write_text(json.dumps(projects, indent=2), encoding="utf-8")
+
+
+def _get_plugins_config_file() -> Path:
+    p = Path.home() / ".astrarecon" / "plugins_config.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _load_plugins_config() -> dict[str, Any]:
+    p = _get_plugins_config_file()
+    if not p.exists():
+        default_cfg = {
+            "disabled_tools": [],
+            "project_overrides": {},
+            "custom_plugins": []
+        }
+        _save_plugins_config(default_cfg)
+        return default_cfg
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {"disabled_tools": [], "project_overrides": {}, "custom_plugins": []}
+
+
+def _save_plugins_config(config: dict[str, Any]) -> None:
+    p = _get_plugins_config_file()
+    p.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
 
 CONTROLLER = ScanController()
@@ -355,7 +482,7 @@ class AstraRequestHandler(BaseHTTPRequestHandler):
 
     def _send_cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def _send_json(self, data: Any, status: int = 200):
@@ -455,6 +582,40 @@ class AstraRequestHandler(BaseHTTPRequestHandler):
                     "stages": ["Live Hosts", "Crawling", "Nuclei", "Dalfox"],
                 },
             ])
+            return
+
+        if path == "/api/projects":
+            self._send_json(_load_projects())
+            return
+
+        if path == "/api/projects/recent":
+            mgr = SessionManager()
+            recent_list = []
+            if mgr.base_dir.exists():
+                for d in sorted(mgr.base_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True)[:5]:
+                    if d.is_dir() and (d / "session.json").exists():
+                        try:
+                            snap = mgr.load_session_snapshot(d)
+                            res = ScanResultLoader.load(d, snap.target)
+                            recent_list.append({
+                                "session_id": d.name,
+                                "target": snap.target,
+                                "status": snap.status.value,
+                                "subdomains": res.subdomain_count,
+                                "live_hosts": res.live_host_count,
+                                "findings": res.finding_count,
+                                "created_at": snap.created_at.isoformat() if hasattr(snap.created_at, "isoformat") else str(snap.created_at),
+                            })
+                        except Exception:
+                            pass
+            self._send_json({
+                "recent_targets": recent_list,
+                "projects": _load_projects(),
+            })
+            return
+
+        if path == "/api/plugins/config":
+            self._send_json(_load_plugins_config())
             return
 
         if path == "/api/sessions":
@@ -644,6 +805,164 @@ class AstraRequestHandler(BaseHTTPRequestHandler):
             self._send_json(res)
             return
 
+        if path == "/api/projects":
+            projects = _load_projects()
+            p_id = body.get("id") or f"proj_{int(time.time())}"
+            p_name = body.get("name", "New Project").strip()
+            p_target = body.get("target", "").strip()
+            p_disabled = body.get("disabled_tools", [])
+
+            found = False
+            for p in projects:
+                if p["id"] == p_id:
+                    p["name"] = p_name
+                    if p_target: p["target"] = p_target
+                    p["disabled_tools"] = p_disabled
+                    found = True
+                    break
+            if not found:
+                projects.insert(0, {
+                    "id": p_id,
+                    "name": p_name,
+                    "target": p_target,
+                    "disabled_tools": p_disabled,
+                    "created_at": datetime.utcnow().isoformat(),
+                    "last_run": None,
+                })
+            _save_projects(projects)
+            self._send_json({"status": "saved", "project_id": p_id, "projects": projects})
+            return
+
+        if path == "/api/plugins/toggle":
+            tool_id = body.get("tool_id", "").strip().lower()
+            enabled = bool(body.get("enabled", True))
+            scope = body.get("scope", "global")
+            project_id = body.get("project_id", "default")
+
+            if not tool_id:
+                self._send_json({"error": "tool_id is required"}, status=400)
+                return
+
+            cfg = _load_plugins_config()
+            if scope == "global":
+                disabled = set(cfg.get("disabled_tools", []))
+                if enabled:
+                    disabled.discard(tool_id)
+                else:
+                    disabled.add(tool_id)
+                cfg["disabled_tools"] = sorted(list(disabled))
+            else:
+                overrides = cfg.setdefault("project_overrides", {}).setdefault(project_id, {})
+                proj_disabled = set(overrides.get("disabled_tools", []))
+                if enabled:
+                    proj_disabled.discard(tool_id)
+                else:
+                    proj_disabled.add(tool_id)
+                overrides["disabled_tools"] = sorted(list(proj_disabled))
+
+            _save_plugins_config(cfg)
+            self._send_json({"status": "updated", "config": cfg})
+            return
+
+        if path == "/api/plugins/custom":
+            name = body.get("name", "").strip().lower()
+            command = body.get("command", "").strip()
+            input_type = body.get("input_type", "TargetDomain").strip()
+            output_type = body.get("output_type", "FQDN").strip()
+
+            if not name or not command:
+                self._send_json({"error": "name and command are required"}, status=400)
+                return
+
+            user_plugin_dir = PluginLoader.get_user_plugin_dir() / name
+            user_plugin_dir.mkdir(parents=True, exist_ok=True)
+            manifest_yaml = f"""id: "{name}"
+name: "{name.title()}"
+version: "1.0.0"
+author: "User Custom"
+description: "User registered custom script tool."
+binary: "{command.split()[0]}"
+command_template: "{command}"
+inputs:
+  - name: "input_target"
+    type: "{input_type}"
+outputs:
+  - name: "output_results"
+    type: "{output_type}"
+"""
+            (user_plugin_dir / "plugin.yaml").write_text(manifest_yaml, encoding="utf-8")
+
+            cfg = _load_plugins_config()
+            custom_list = cfg.setdefault("custom_plugins", [])
+            custom_list.append({"name": name, "command": command, "input_type": input_type, "output_type": output_type})
+            _save_plugins_config(cfg)
+
+            self._send_json({"status": "created", "plugin_id": name})
+            return
+
+        if path == "/api/sessions/clear":
+            target = body.get("target") if isinstance(body, dict) else None
+            mgr = SessionManager()
+            deleted, reclaimed = mgr.clear_sessions(target=target)
+            if not CONTROLLER.is_scanning:
+                CONTROLLER.active_session_id = None
+                CONTROLLER.active_target = None
+            self._send_json({"status": "cleared", "deleted_count": deleted, "reclaimed_bytes": reclaimed})
+            return
+
+        if path.startswith("/api/session/") and path.endswith("/delete"):
+            session_id = path.replace("/api/session/", "").replace("/delete", "").strip().strip("/")
+            if CONTROLLER.is_scanning and CONTROLLER.active_session_id == session_id:
+                self._send_json({"error": "Cannot delete active running mission. Please abort the mission first."}, status=400)
+                return
+
+            mgr = SessionManager()
+            success = mgr.delete_session(session_id)
+            if success:
+                if CONTROLLER.active_session_id == session_id:
+                    CONTROLLER.active_session_id = None
+                    CONTROLLER.active_target = None
+                self._send_json({"status": "deleted", "session_id": session_id})
+            else:
+                self._send_json({"error": "Session not found"}, status=404)
+            return
+
+        self._send_json({"error": "Not Found"}, status=404)
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
+
+        # Purge all mission history / by target
+        if path == "/api/sessions":
+            target = query.get("target", [None])[0]
+            mgr = SessionManager()
+            deleted, reclaimed = mgr.clear_sessions(target=target)
+            if not CONTROLLER.is_scanning:
+                CONTROLLER.active_session_id = None
+                CONTROLLER.active_target = None
+            self._send_json({"status": "cleared", "deleted_count": deleted, "reclaimed_bytes": reclaimed})
+            return
+
+        # Delete single mission
+        if path.startswith("/api/session/"):
+            session_id = path.replace("/api/session/", "").strip().strip("/")
+            if CONTROLLER.is_scanning and CONTROLLER.active_session_id == session_id:
+                self._send_json({"error": "Cannot delete active running mission. Please abort the mission first."}, status=400)
+                return
+
+            mgr = SessionManager()
+            success = mgr.delete_session(session_id)
+            if success:
+                if CONTROLLER.active_session_id == session_id:
+                    CONTROLLER.active_session_id = None
+                    CONTROLLER.active_target = None
+                self._send_json({"status": "deleted", "session_id": session_id})
+            else:
+                self._send_json({"error": "Session not found"}, status=404)
+            return
+
         self._send_json({"error": "Not Found"}, status=404)
 
     def _handle_events(self):
@@ -662,6 +981,13 @@ class AstraRequestHandler(BaseHTTPRequestHandler):
             initial_status = CONTROLLER.get_status()
             self.wfile.write(f"event: init\ndata: {json.dumps(initial_status)}\n\n".encode("utf-8"))
             self.wfile.flush()
+
+            # Replay recent log buffer so refreshed or new tabs instantly see active progress
+            with CONTROLLER.lock:
+                buffered_logs = list(CONTROLLER.recent_logs)
+            if buffered_logs:
+                self.wfile.write(f"event: log_history\ndata: {json.dumps(buffered_logs)}\n\n".encode("utf-8"))
+                self.wfile.flush()
 
             while True:
                 try:

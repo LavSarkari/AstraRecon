@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AstraRecon — Cosmic Reconnaissance Engine & DAG Canvas</title>
+  <meta name="description" content="Production-grade distributed attack surface reconnaissance engine with visual DAG execution canvas.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -12,42 +13,241 @@
 <body>
 
   <!-- ======================================================================
+       Inline Authored SVG Icon Sprite (Cohesive 1.75px Stroke System)
+       ====================================================================== -->
+  <svg style="display:none;" aria-hidden="true">
+    <defs>
+      <!-- Radar / Brand Logo -->
+      <g id="icon-radar">
+        <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.75" opacity="0.3"/>
+        <circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="1.75" opacity="0.6"/>
+        <circle cx="12" cy="12" r="2" fill="currentColor"/>
+        <path d="M12 2 L12 12 L20 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      </g>
+      <!-- Canvas / Workflow Graph -->
+      <g id="icon-canvas">
+        <rect x="3" y="3" width="6" height="6" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.75"/>
+        <rect x="15" y="3" width="6" height="6" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.75"/>
+        <rect x="9" y="15" width="6" height="6" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.75"/>
+        <path d="M6 9 v3 a3 3 0 0 0 3 3 h3 M18 9 v3 a3 3 0 0 1 -3 3" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      </g>
+      <!-- Findings / Shield Target -->
+      <g id="icon-findings">
+        <path d="M12 2 L4 5 v6 c0 5.5 3.5 10 8 11 c4.5 -1 8 -5.5 8 -11 V5 Z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
+        <circle cx="12" cy="11" r="3" fill="none" stroke="currentColor" stroke-width="1.75"/>
+        <circle cx="12" cy="11" r="1" fill="currentColor"/>
+      </g>
+      <!-- Live Terminal Prompt -->
+      <g id="icon-terminal">
+        <rect x="3" y="4" width="18" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.75"/>
+        <path d="M7 9 l3 3 l-3 3 M13 15 h4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <!-- Sessions / Layers Archive -->
+      <g id="icon-sessions">
+        <path d="M4 7 l8 -4 l8 4 l-8 4 Z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
+        <path d="M4 12 l8 4 l8 -4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
+        <path d="M4 17 l8 4 l8 -4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
+      </g>
+      <!-- Doctor / Health Diagnostic -->
+      <g id="icon-doctor">
+        <path d="M22 12 h-4 l-3 7 l-6 -14 l-3 7 H2" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <!-- Play / Launch -->
+      <g id="icon-play">
+        <polygon points="6 4, 19 12, 6 20" fill="currentColor"/>
+      </g>
+      <!-- Stop / Abort -->
+      <g id="icon-stop">
+        <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor"/>
+      </g>
+      <!-- Zoom In -->
+      <g id="icon-zoom-in">
+        <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.75"/>
+        <path d="M11 8 v6 M8 11 h6 M16 16 l5 5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      </g>
+      <!-- Zoom Out -->
+      <g id="icon-zoom-out">
+        <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.75"/>
+        <path d="M8 11 h6 M16 16 l5 5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      </g>
+      <!-- Center / Reset View -->
+      <g id="icon-center">
+        <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.75"/>
+        <path d="M12 3 v3 M12 18 v3 M3 12 h3 M18 12 h3" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      </g>
+      <!-- Fit View -->
+      <g id="icon-fit">
+        <path d="M4 9 V4 h5 M20 9 V4 h-5 M4 15 v5 h5 M20 15 v5 h-5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <!-- Close / Cross -->
+      <g id="icon-close">
+        <path d="M18 6 L6 18 M6 6 l12 12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      </g>
+      <!-- Copy -->
+      <g id="icon-copy">
+        <rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.75"/>
+        <path d="M5 15 H4 a2 2 0 0 1 -2 -2 V4 a2 2 0 0 1 2 -2 h9 a2 2 0 0 1 2 2 v1" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      </g>
+      <!-- Checkmark -->
+      <g id="icon-check">
+        <polyline points="20 6, 9 17, 4 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <!-- Download -->
+      <g id="icon-download">
+        <path d="M12 3 v12 M7 10 l5 5 l5 -5 M4 20 h16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <!-- Search -->
+      <g id="icon-search">
+        <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.75"/>
+        <path d="M16.5 16.5 L21 21" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      </g>
+      <!-- External Link -->
+      <g id="icon-external">
+        <path d="M18 13 v6 a2 2 0 0 1 -2 2 H5 a2 2 0 0 1 -2 -2 V8 a2 2 0 0 1 2 -2 h6 M15 3 h6 v6 M10 14 L21 3" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <!-- Sparkle / AI Prompt -->
+      <g id="icon-ai">
+        <path d="M12 2 L14 8 L20 10 L14 12 L12 18 L10 12 L4 10 L10 8 Z M19 16 L20 19 L23 20 L20 21 L19 24 L18 21 L15 20 L18 19 Z" fill="currentColor"/>
+      </g>
+      <!-- Keyboard / Shortcuts -->
+      <g id="icon-keyboard">
+        <rect x="2" y="5" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.75"/>
+        <path d="M6 9 h.01 M10 9 h.01 M14 9 h.01 M18 9 h.01 M6 13 h.01 M10 13 h4 M18 13 h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <!-- Filter -->
+      <g id="icon-filter">
+        <path d="M4 6 h16 M7 12 h10 M10 18 h4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      </g>
+      <!-- Clear / Trash -->
+      <g id="icon-trash">
+        <path d="M4 7 h16 M10 11 v6 M14 11 v6 M5 7 l1 12 a2 2 0 0 0 2 2 h8 a2 2 0 0 0 2 -2 l1 -12 M9 7 V4 a1 1 0 0 1 1 -1 h4 a1 1 0 0 1 1 1 v3" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      </g>
+      <!-- Info Circle -->
+      <g id="icon-info">
+        <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.75"/>
+        <line x1="12" y1="16" x2="12" y2="12" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+        <line x1="12" y1="8" x2="12.01" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <!-- Sun / Light Mode -->
+      <g id="icon-sun">
+        <circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.75"/>
+        <line x1="12" y1="2" x2="12" y2="4.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+        <line x1="12" y1="19.5" x2="12" y2="22" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+        <line x1="4.22" y1="4.22" x2="6" y2="6" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+        <line x1="18" y1="18" x2="19.78" y2="19.78" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+        <line x1="2" y1="12" x2="4.5" y2="12" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+        <line x1="19.5" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+        <line x1="4.22" y1="19.78" x2="6" y2="18" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+        <line x1="18" y1="6" x2="19.78" y2="4.22" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      </g>
+      <!-- Moon / Dark Mode -->
+      <g id="icon-moon">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+    </defs>
+  </svg>
+
+  <!-- ======================================================================
        Header & Brand Navigation
        ====================================================================== -->
   <header class="app-header">
     <div class="brand-section">
-      <img src="/logo.png" alt="AstraRecon" class="brand-logo" onerror="this.style.display='none'">
       <div class="brand-title">
         <span class="brand-astra">ASTRA</span><span class="brand-recon">RECON</span>
       </div>
-      <span class="badge-version">v0.2.0 • CANVAS</span>
+      <div class="workspace-pill" id="btn-workspace-select" title="Active Project Scope (Click to Switch Workspace)">
+        <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-sessions"/></svg>
+        <span id="workspace-active-name">Global Scope</span>
+        <span class="caret-down">&#x25BE;</span>
+      </div>
+      <div class="badge-vps-pill" title="Ultra-lightweight stdlib engine running under 20MB RAM">
+        <span class="dot-online"></span>
+        <span>VPS READY &bull; &lt;20MB</span>
+      </div>
     </div>
 
-    <!-- Navigation Tabs -->
-    <nav class="nav-tabs">
-      <button class="nav-tab-btn active" data-tab="canvas">
-        <span>⚡</span> DAG Canvas
+    <!-- Main Navigation Bar -->
+    <nav class="nav-tabs" role="tablist" aria-label="Main Navigation">
+      <button class="nav-tab-btn active" data-tab="canvas" role="tab" aria-selected="true">
+        <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-canvas"/></svg>
+        <span>DAG Canvas</span>
       </button>
-      <button class="nav-tab-btn" data-tab="findings">
-        <span>🎯</span> Findings
+      <button class="nav-tab-btn" data-tab="findings" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-findings"/></svg>
+        <span>Findings</span>
+        <span class="nav-counter" id="nav-count-findings">0</span>
       </button>
-      <button class="nav-tab-btn" data-tab="logs">
-        <span>💻</span> Live Terminal
+      <button class="nav-tab-btn" data-tab="logs" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-terminal"/></svg>
+        <span>Live Stream</span>
       </button>
-      <button class="nav-tab-btn" data-tab="sessions">
-        <span>🗂️</span> Sessions
+      <button class="nav-tab-btn" data-tab="sessions" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-sessions"/></svg>
+        <span>Missions</span>
       </button>
-      <button class="nav-tab-btn" data-tab="doctor">
-        <span>🩺</span> Arsenal Doctor
+      <button class="nav-tab-btn" data-tab="doctor" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-doctor"/></svg>
+        <span>Arsenal</span>
       </button>
     </nav>
 
-    <!-- Telemetry Indicator -->
+    <!-- Header Actions & Telemetry -->
     <div class="header-status-indicator">
+      <!-- High-UX Header Mission Selector Dropdown (Replaces Cockpit Button) -->
+      <div class="mission-selector-wrapper" id="mission-selector-wrapper">
+        <button type="button" class="btn-mission-dropdown-trigger" id="btn-header-mission-picker" title="Switch Reconnaissance Mission">
+          <svg viewBox="0 0 24 24" class="svg-icon mission-picker-icon"><use href="#icon-radar"/></svg>
+          <div class="mission-picker-text">
+            <span class="mission-picker-label">MISSION</span>
+            <span class="mission-picker-target" id="header-mission-target">Select Mission...</span>
+          </div>
+          <span class="mission-picker-stats" id="header-mission-stats">--</span>
+          <svg viewBox="0 0 24 24" class="svg-icon chevron-icon"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+
+        <!-- Dropdown Menu Card -->
+        <div class="mission-dropdown-menu" id="dropdown-mission-selector">
+          <div class="mission-dropdown-header">
+            <div class="dropdown-header-top">
+              <span class="dropdown-title">Missions &amp; Engagements</span>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span class="dropdown-count-pill" id="dropdown-missions-count">0 Recorded</span>
+                <button type="button" class="btn-dropdown-purge-link" id="btn-dropdown-purge-all" title="Clear all mission history">
+                  <svg viewBox="0 0 24 24" class="svg-icon" style="width:12px; height:12px;"><use href="#icon-trash"/></svg>
+                  <span>Purge</span>
+                </button>
+              </div>
+            </div>
+            <div class="dropdown-search-wrapper">
+              <svg viewBox="0 0 24 24" class="svg-icon search-icon"><use href="#icon-search"/></svg>
+              <input type="text" id="input-dropdown-filter" placeholder="Filter by target or session..." autocomplete="off">
+            </div>
+          </div>
+          
+          <div class="mission-dropdown-list" id="dropdown-missions-list">
+            <div style="padding:16px; text-align:center; color:var(--text-dim); font-size:12px;">Loading missions...</div>
+          </div>
+
+          <div class="mission-dropdown-footer">
+            <button type="button" class="btn-dropdown-launchpad" id="btn-dropdown-open-cockpit">
+              <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-radar"/></svg>
+              <span>Launch Fresh Mission (Cockpit)</span>
+              <kbd class="kbd-hint">M</kbd>
+            </button>
+          </div>
+        </div>
+      </div>
       <div class="telemetry-pill" id="telemetry-status-pill">
         <span class="pulse-dot"></span>
-        <span id="telemetry-status-text">STANDBY • READY</span>
+        <span id="telemetry-status-text">STANDBY</span>
+        <span class="telemetry-timer" id="telemetry-timer">00:00.0</span>
       </div>
+      <button class="btn-icon-subtle" id="btn-theme-toggle" title="Switch Theme (Light / Dark)" aria-label="Toggle Light / Dark Mode">
+        <svg viewBox="0 0 24 24" class="svg-icon" id="theme-toggle-icon"><use href="#icon-sun"/></svg>
+      </button>
+      <button class="btn-icon-subtle" id="btn-shortcuts-modal" title="Keyboard Shortcuts (?)">
+        <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-keyboard"/></svg>
+      </button>
     </div>
   </header>
 
@@ -55,35 +255,45 @@
        Mission Control Bar (Target & Preset Launcher)
        ====================================================================== -->
   <div class="mission-bar">
-    <form id="form-mission-launch" style="display:flex; align-items:center; gap:12px; width:100%;">
+    <form id="form-mission-launch" class="mission-form">
       <div class="mission-input-group">
-        <span class="input-icon">🎯</span>
-        <input type="text" id="input-target" placeholder="Enter target domain or URL (e.g. example.com)..." required autocomplete="off">
+        <svg viewBox="0 0 24 24" class="svg-icon input-prefix-icon"><use href="#icon-findings"/></svg>
+        <input 
+          type="text" 
+          id="input-target" 
+          placeholder="Target domain (e.g., hackerone.com or uber.com)..." 
+          required 
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <span class="target-chip" id="target-validation-chip">READY</span>
       </div>
 
       <div class="mission-select-group">
-        <select id="select-workflow">
-          <option value="default">Default 7-Stage Pipeline</option>
-          <option value="fast">Fast Surface Triage</option>
-          <option value="passive">Stealth Passive OSINT</option>
-          <option value="vuln">Direct Vuln Assessment</option>
+        <select id="select-workflow" title="Choose Recon Workflow Preset">
+          <option value="default">Default 7-Stage Pipeline (Full Surface)</option>
+          <option value="fast">Fast Surface Triage (Subfinder + DNS + HTTP)</option>
+          <option value="passive">Stealth Passive OSINT (No Active Probing)</option>
+          <option value="vuln">Direct Vulnerability Assessment (Nuclei + Dalfox)</option>
         </select>
       </div>
 
       <div class="mission-select-group">
-        <select id="select-profile">
-          <option value="auto">Profile: Auto (3 Workers)</option>
-          <option value="safe">Profile: Safe (1 Worker)</option>
+        <select id="select-profile" title="Concurrency Worker Profile">
+          <option value="auto">Profile: Auto (3 Parallel Workers)</option>
+          <option value="safe">Profile: Stealth (1 Worker)</option>
           <option value="beast">Profile: Beast (5 Workers)</option>
         </select>
       </div>
 
       <button type="submit" class="btn-launch" id="btn-mission-launch">
-        <span>🚀</span> Launch Mission
+        <svg viewBox="0 0 24 24" class="svg-icon btn-svg"><use href="#icon-play"/></svg>
+        <span>Launch Mission</span>
       </button>
 
       <button type="button" class="btn-stop" id="btn-mission-stop" style="display:none;">
-        <span>⏹</span> Abort Run
+        <svg viewBox="0 0 24 24" class="svg-icon btn-svg"><use href="#icon-stop"/></svg>
+        <span>Abort Mission</span>
       </button>
     </form>
   </div>
@@ -94,188 +304,675 @@
   <main class="main-viewport">
 
     <!-- View 1: Visual Interactive DAG Canvas -->
-    <div class="view-pane active" id="view-canvas">
+    <div class="view-pane active" id="view-canvas" role="tabpanel">
       <div class="canvas-container" id="canvas-container">
+        
+        <!-- Canvas Background Matrix Grid -->
+        <div class="canvas-matrix-grid"></div>
+
+        <!-- Transformable Viewport Wrapper -->
         <div class="canvas-viewport-wrapper" id="canvas-viewport">
-          <svg class="canvas-svg-layer" id="canvas-svg-layer"></svg>
+          <svg class="canvas-svg-layer" id="canvas-svg-layer">
+            <defs>
+              <linearGradient id="edge-cyan-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#1da1ff" stop-opacity="0.9"/>
+                <stop offset="100%" stop-color="#00e676" stop-opacity="0.9"/>
+              </linearGradient>
+              <linearGradient id="edge-active-flow" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#00e5ff" stop-opacity="1"/>
+                <stop offset="100%" stop-color="#1da1ff" stop-opacity="1"/>
+              </linearGradient>
+              <filter id="glow-filter" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="3.5" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+              <!-- Arrowhead Markers -->
+              <marker id="arrow-default" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M 0 1 L 9 5 L 0 9 z" fill="rgba(255, 255, 255, 0.25)"/>
+              </marker>
+              <marker id="arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M 0 1 L 9 5 L 0 9 z" fill="#00e5ff"/>
+              </marker>
+              <marker id="arrow-completed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M 0 1 L 9 5 L 0 9 z" fill="#10b981"/>
+              </marker>
+              <marker id="arrow-failed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M 0 1 L 9 5 L 0 9 z" fill="#f43f5e"/>
+              </marker>
+            </defs>
+          </svg>
+          <div class="canvas-phase-layer" id="canvas-phase-layer"></div>
           <div class="canvas-node-layer" id="canvas-node-layer"></div>
         </div>
 
-        <!-- Zoom Controls -->
+        <!-- Canvas Floating HUD Overlay (Stage Breadcrumb & Metrics) -->
+        <div class="canvas-hud">
+          <div class="canvas-hud-group">
+            <div class="canvas-hud-item">
+              <span class="hud-label">TARGET:</span>
+              <span class="hud-target-pill" id="hud-target-pill">
+                <span class="dot-online"></span>
+                <span id="hud-target-name">Ready</span>
+              </span>
+            </div>
+            <div class="canvas-hud-divider"></div>
+            <div class="canvas-hud-item">
+              <span class="hud-label">TOPOLOGY:</span>
+              <span class="hud-value" id="hud-node-count">0 Nodes &bull; 0 Edges</span>
+            </div>
+          </div>
+
+          <!-- Phase Navigation Jump Pills -->
+          <div class="canvas-stage-nav" id="canvas-stage-nav">
+            <button class="hud-stage-pill" onclick="panToStage(0)"><span>1</span> Scope</button>
+            <button class="hud-stage-pill" onclick="panToStage(1)"><span>2</span> OSINT</button>
+            <button class="hud-stage-pill" onclick="panToStage(2)"><span>3</span> Aggregator</button>
+            <button class="hud-stage-pill" onclick="panToStage(3)"><span>4</span> DNS</button>
+            <button class="hud-stage-pill" onclick="panToStage(4)"><span>5</span> Probing</button>
+            <button class="hud-stage-pill" onclick="panToStage(5)"><span>6</span> Vulnerabilities</button>
+          </div>
+        </div>
+
+        <!-- Canvas Controls Toolbar -->
         <div class="canvas-controls">
-          <button class="canvas-control-btn" id="btn-zoom-in" title="Zoom In">+</button>
-          <button class="canvas-control-btn" id="btn-zoom-out" title="Zoom Out">−</button>
-          <button class="canvas-control-btn" id="btn-zoom-reset" title="Reset View">⊙</button>
+          <button class="canvas-control-btn" id="btn-zoom-in" title="Zoom In (+)">
+            <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-zoom-in"/></svg>
+          </button>
+          <button class="canvas-control-btn" id="btn-zoom-out" title="Zoom Out (-)">
+            <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-zoom-out"/></svg>
+          </button>
+          <button class="canvas-control-btn" id="btn-zoom-fit" title="Fit Entire DAG to Screen (F)">
+            <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-fit"/></svg>
+          </button>
+          <button class="canvas-control-btn" id="btn-zoom-reset" title="Center View (C)">
+            <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-center"/></svg>
+          </button>
         </div>
 
         <!-- Node Inspector Slide-over Drawer -->
-        <aside class="node-drawer" id="node-drawer">
+        <aside class="node-drawer" id="node-drawer" aria-label="Node Inspector">
           <div class="node-drawer-header">
             <div>
               <div class="node-drawer-title" id="drawer-node-name">Node Inspector</div>
-              <div style="font-family:var(--font-mono); font-size:11px; color:var(--color-muted);" id="drawer-node-type">builtin.target_input</div>
+              <div class="node-drawer-type" id="drawer-node-type">builtin.target_input</div>
             </div>
-            <button class="node-drawer-close" id="btn-drawer-close">✕</button>
+            <button class="btn-icon-subtle" id="btn-drawer-close" title="Close Drawer (Esc)">
+              <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-close"/></svg>
+            </button>
           </div>
+
           <div class="node-drawer-body">
-            <div>
-              <div class="drawer-section-title">Current Execution Status</div>
-              <div id="drawer-node-status">● WAITING</div>
+            <!-- Node Status Card -->
+            <div class="drawer-stat-grid">
+              <div class="drawer-stat-box">
+                <span class="drawer-stat-label">Execution State</span>
+                <span class="drawer-stat-val" id="drawer-node-status">WAITING</span>
+              </div>
+              <div class="drawer-stat-box">
+                <span class="drawer-stat-label">Discovered Yield</span>
+                <span class="drawer-stat-val" id="drawer-node-yield">0 items</span>
+              </div>
+              <div class="drawer-stat-box">
+                <span class="drawer-stat-label">Elapsed Time</span>
+                <span class="drawer-stat-val" id="drawer-node-elapsed">--</span>
+              </div>
             </div>
-            <div style="flex:1; display:flex; flex-direction:column;">
-              <div class="drawer-section-title">Real-Time Stage Output & Stderr</div>
-              <pre class="drawer-log-box" id="drawer-log-content">Select a node to inspect logs...</pre>
+
+            <!-- Pipeline Dependencies (Upstream / Downstream) -->
+            <div class="drawer-meta-section">
+              <div class="drawer-section-title">Pipeline Dependencies</div>
+              <div class="drawer-dep-group">
+                <span class="drawer-dep-label">Upstream Predecessors:</span>
+                <div class="drawer-dep-chips" id="drawer-predecessors">
+                  <span class="text-dim">Root Entrypoint</span>
+                </div>
+              </div>
+              <div class="drawer-dep-group" style="margin-top:10px;">
+                <span class="drawer-dep-label">Downstream Consumers:</span>
+                <div class="drawer-dep-chips" id="drawer-successors">
+                  <span class="text-dim">Terminal Node</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stage Metadata Box -->
+            <div class="drawer-meta-section">
+              <div class="drawer-section-title">Port Signatures</div>
+              <div class="drawer-port-list" id="drawer-ports">
+                <div class="drawer-port-item"><span class="port-dir in">IN</span> <span class="port-name">TargetDomain</span></div>
+                <div class="drawer-port-item"><span class="port-dir out">OUT</span> <span class="port-name">FQDN</span></div>
+              </div>
+            </div>
+
+            <!-- Log Stream Container -->
+            <div class="drawer-log-section">
+              <div class="drawer-log-header">
+                <span class="drawer-section-title">Execution Console Output</span>
+                <button class="btn-tiny" id="btn-copy-drawer-log">
+                  <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-copy"/></svg>
+                  <span>Copy</span>
+                </button>
+              </div>
+              <pre class="drawer-log-box" id="drawer-log-content">Select a pipeline node to inspect real-time logs and output streams...</pre>
             </div>
           </div>
         </aside>
+
       </div>
     </div>
 
-    <!-- View 2: Findings & Attack Surface -->
-    <div class="view-pane" id="view-findings">
+    <!-- View 2: Findings & Attack Surface Explorer -->
+    <div class="view-pane" id="view-findings" role="tabpanel">
       <div class="content-pane-container">
-        <!-- Stat Cards -->
+        
+        <!-- Surface Stats Strip -->
         <div class="stats-grid">
           <div class="stat-card primary">
-            <span class="stat-label">Discovered Subdomains</span>
+            <div class="stat-card-header">
+              <span class="stat-label">Discovered Subdomains</span>
+              <svg viewBox="0 0 24 24" class="svg-icon stat-icon"><use href="#icon-canvas"/></svg>
+            </div>
             <span class="stat-value" id="stat-subdomains-count">0</span>
+            <span class="stat-subtext">Passive OSINT &amp; Brute yield</span>
           </div>
+
           <div class="stat-card success">
-            <span class="stat-label">Live Probed Hosts</span>
+            <div class="stat-card-header">
+              <span class="stat-label">Live Probed Hosts</span>
+              <svg viewBox="0 0 24 24" class="svg-icon stat-icon"><use href="#icon-findings"/></svg>
+            </div>
             <span class="stat-value" id="stat-hosts-count">0</span>
+            <span class="stat-subtext">Active HTTP/HTTPS web endpoints</span>
           </div>
+
           <div class="stat-card error">
-            <span class="stat-label">Vulnerabilities Found</span>
+            <div class="stat-card-header">
+              <span class="stat-label">Vulnerabilities Flagged</span>
+              <svg viewBox="0 0 24 24" class="svg-icon stat-icon"><use href="#icon-findings"/></svg>
+            </div>
             <span class="stat-value" id="stat-vulns-count">0</span>
+            <span class="stat-subtext">Nuclei &amp; Dalfox security alerts</span>
           </div>
         </div>
 
-        <!-- Vulnerabilities Table -->
-        <div class="table-card" style="margin-bottom:24px;">
-          <div class="table-toolbar">
-            <span style="font-weight:700; font-size:14px; color:#fff;">💥 Security Findings & Vulnerabilities</span>
+        <!-- Filter & Search Toolbar -->
+        <div class="findings-toolbar">
+          <div class="search-input-wrapper">
+            <svg viewBox="0 0 24 24" class="svg-icon search-icon"><use href="#icon-search"/></svg>
+            <input type="text" id="input-search-findings" placeholder="Search hosts, paths, technologies, or CVEs...">
           </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th style="width:120px;">Severity</th>
-                <th>Finding / Template</th>
-                <th>Target Host / URL</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-vulns">
-              <tr><td colspan="3" style="text-align:center; padding:20px; color:var(--color-muted);">No vulnerabilities detected yet.</td></tr>
-            </tbody>
-          </table>
+
+          <div class="findings-session-selector" title="Select mission to inspect surface findings">
+            <svg viewBox="0 0 24 24" class="svg-icon" style="color:var(--text-dim); margin-right:6px;"><use href="#icon-sessions"/></svg>
+            <select id="select-findings-session" class="select-session-picker">
+              <option value="">Loading missions...</option>
+            </select>
+          </div>
+
+          <div class="toolbar-actions">
+            <button class="btn-secondary" id="btn-export-json" title="Download Findings JSON">
+              <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-download"/></svg>
+              <span>Export JSON</span>
+            </button>
+            <button class="btn-secondary" id="btn-export-csv" title="Download Findings CSV">
+              <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-download"/></svg>
+              <span>Export CSV</span>
+            </button>
+            <button class="btn-primary-gradient" id="btn-copy-ai-prompt" title="Copy LLM Distillation Context">
+              <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-ai"/></svg>
+              <span>Copy AI Prompt</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Findings Tables Subsections -->
+        <div class="table-card">
+          <div class="table-toolbar">
+            <div class="table-title">
+              <span class="pulse-dot-red"></span>
+              <span>Security Findings &amp; Triage</span>
+            </div>
+            <span class="table-badge" id="badge-vulns-count">0 detected</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width:130px;">Severity</th>
+                  <th style="width:200px;">Template ID</th>
+                  <th>Target Endpoint / URL</th>
+                  <th style="width:120px;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-vulns">
+                <tr><td colspan="4" class="empty-state-cell">No security vulnerabilities detected. Launch a scan with Nuclei enabled.</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <!-- Live Hosts Table -->
-        <div class="table-card" style="margin-bottom:24px;">
-          <div class="table-toolbar">
-            <span style="font-weight:700; font-size:14px; color:#fff;">🚀 Live HTTP Endpoints</span>
-          </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>URL</th>
-                <th style="width:120px;">Status</th>
-                <th>Page Title</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-hosts">
-              <tr><td colspan="3" style="text-align:center; padding:20px; color:var(--color-muted);">No live endpoints probed yet.</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Subdomains Table -->
         <div class="table-card">
           <div class="table-toolbar">
-            <span style="font-weight:700; font-size:14px; color:#fff;">🔍 Subdomain Attack Surface</span>
+            <div class="table-title">
+              <span class="pulse-dot-green"></span>
+              <span>Live Probed Endpoints (HTTPX)</span>
+            </div>
+            <span class="table-badge" id="badge-hosts-count">0 endpoints</span>
           </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>FQDN</th>
-                <th style="width:140px;">Status</th>
-                <th style="width:100px;">Action</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-subdomains">
-              <tr><td colspan="3" style="text-align:center; padding:20px; color:var(--color-muted);">No subdomains mapped yet.</td></tr>
-            </tbody>
-          </table>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>URL</th>
+                  <th style="width:110px;">Status</th>
+                  <th>Web Title / Tech Fingerprint</th>
+                  <th style="width:120px;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-hosts">
+                <tr><td colspan="4" class="empty-state-cell">No endpoints probed yet. Run a scan to discover active HTTP services.</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
+
+        <!-- Subdomain Inventory Table -->
+        <div class="table-card">
+          <div class="table-toolbar">
+            <div class="table-title">
+              <span class="pulse-dot-cyan"></span>
+              <span>Subdomain Attack Surface</span>
+            </div>
+            <button class="btn-tiny" id="btn-copy-all-subdomains">
+              <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-copy"/></svg>
+              <span>Copy All</span>
+            </button>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fully Qualified Domain (FQDN)</th>
+                  <th style="width:140px;">Discovery Source</th>
+                  <th style="width:100px;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-subdomains">
+                <tr><td colspan="3" class="empty-state-cell">No subdomains discovered yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
 
     <!-- View 3: Live Terminal Stream -->
-    <div class="view-pane" id="view-logs">
-      <div class="console-pane" id="console-log-stream">
-        <div class="log-entry">
-          <span class="log-time">--:--:--</span>
-          <span class="log-level info">SYS</span>
-          <span class="log-text">AstraRecon telemetry console online. Waiting for active pipeline execution...</span>
+    <div class="view-pane" id="view-logs" role="tabpanel">
+      <div class="terminal-container">
+        <div class="terminal-toolbar">
+          <div class="terminal-traffic-lights">
+            <span class="traffic-dot red"></span>
+            <span class="traffic-dot yellow"></span>
+            <span class="traffic-dot green"></span>
+            <span class="terminal-title">AstraRecon Live Execution Stream</span>
+          </div>
+          <div class="terminal-actions">
+            <label class="terminal-toggle-label">
+              <input type="checkbox" id="check-auto-scroll" checked>
+              <span>Auto-scroll</span>
+            </label>
+            <button class="btn-tiny" id="btn-clear-logs">
+              <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-trash"/></svg>
+              <span>Clear</span>
+            </button>
+            <button class="btn-tiny" id="btn-copy-terminal">
+              <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-copy"/></svg>
+              <span>Copy Buffer</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="console-pane" id="console-log-stream">
+          <div class="log-entry">
+            <span class="log-time">00:00:00</span>
+            <span class="log-level info">SYS</span>
+            <span class="log-text">AstraRecon SSE Telemetry stream initialized. Awaiting pipeline triggers...</span>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- View 4: Sessions Explorer -->
-    <div class="view-pane" id="view-sessions">
+    <div class="view-pane" id="view-sessions" role="tabpanel">
       <div class="content-pane-container">
         <div class="table-card">
           <div class="table-toolbar">
-            <span style="font-weight:700; font-size:14px; color:#fff;">🗂️ Historical Reconnaissance Missions</span>
+            <div class="table-title">
+              <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-sessions"/></svg>
+              <span>Reconnaissance Mission History</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button class="btn-tiny" id="btn-refresh-sessions">
+                <svg viewBox="0 0 24 24" class="svg-icon"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.8 1.04 6.44 2.73L21 8m0-6v6h-6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span>Refresh Missions</span>
+              </button>
+              <button class="btn-tiny btn-danger-subtle" id="btn-clear-all-sessions" title="Permanently delete all completed mission history">
+                <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-trash"/></svg>
+                <span>Purge History</span>
+              </button>
+            </div>
           </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th style="width:160px;">Session ID</th>
-                <th>Target</th>
-                <th style="width:120px;">Status</th>
-                <th>Yield Metrics</th>
-                <th>Timestamp</th>
-                <th style="width:200px;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-sessions">
-              <tr><td colspan="6" style="text-align:center; padding:20px; color:var(--color-muted);">Loading missions...</td></tr>
-            </tbody>
-          </table>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width:180px;">Session ID</th>
+                  <th>Target Domain</th>
+                  <th style="width:120px;">Status</th>
+                  <th>Discovered Assets</th>
+                  <th>Timestamp</th>
+                  <th style="width:200px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-sessions">
+                <tr><td colspan="6" class="empty-state-cell">Loading historical missions...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- View 5: Arsenal Doctor -->
-    <div class="view-pane" id="view-doctor">
+    <div class="view-pane" id="view-doctor" role="tabpanel">
       <div class="content-pane-container">
+        
+        <!-- Environment Badges -->
         <div class="stats-grid" style="margin-bottom:24px;">
           <div class="stat-card">
-            <span class="stat-label">Operating System</span>
+            <span class="stat-label">Host OS &amp; Arch</span>
             <span class="stat-value" style="font-size:16px;" id="sys-os">Linux</span>
+            <span class="stat-subtext">Process Isolation: POSIX setsid</span>
           </div>
           <div class="stat-card">
             <span class="stat-label">Python Environment</span>
             <span class="stat-value" style="font-size:16px;" id="sys-python">Python 3.11</span>
+            <span class="stat-subtext">Asyncio Event Loop + Threading</span>
           </div>
           <div class="stat-card">
             <span class="stat-label">Go Compiler</span>
             <span class="stat-value" style="font-size:16px;" id="sys-go">Go 1.22</span>
+            <span class="stat-subtext">Subfinder &bull; HTTPX &bull; Naabu</span>
           </div>
           <div class="stat-card primary">
             <span class="stat-label">Arsenal Readiness</span>
-            <span class="stat-value" style="font-size:16px;" id="sys-tools-count">13 / 13</span>
+            <span class="stat-value" style="font-size:16px;" id="sys-tools-count">13 / 13 Installed</span>
+            <span class="stat-subtext">100% Pipeline Coverage</span>
           </div>
         </div>
 
-        <div style="font-weight:700; font-size:15px; margin-bottom:14px; color:#fff;">Integrated Security Arsenal (13 Tools)</div>
-        <div class="tools-grid" id="tools-grid">
-          <!-- Populated dynamically via JS -->
+        <!-- Arsenal Card Grid & Scope Hub -->
+        <div class="table-card">
+          <div class="table-toolbar">
+            <div class="table-title">
+              <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-doctor"/></svg>
+              <span>Security Arsenal &amp; Plugin Hub</span>
+            </div>
+            <div class="toolbar-actions">
+              <div class="scope-selector-group">
+                <span class="scope-label">Scope:</span>
+                <select id="select-plugin-scope" class="scope-dropdown">
+                  <option value="global">Global (All Missions)</option>
+                  <option value="project">Project Scope (Active Workspace)</option>
+                </select>
+              </div>
+              <button class="btn-primary-gradient" id="btn-open-custom-tool-modal">
+                <span>+ Custom Tool / Script</span>
+              </button>
+            </div>
+          </div>
+          <div class="tools-grid" id="tools-grid">
+            <!-- Dynamically populated via JS with interactive toggle switches -->
+          </div>
         </div>
+
       </div>
     </div>
 
   </main>
+
+  <!-- ======================================================================
+       Keyboard Shortcuts Modal
+       ====================================================================== -->
+  <div class="modal-backdrop" id="modal-shortcuts" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Keyboard Shortcuts</div>
+        <button class="btn-icon-subtle" id="btn-close-shortcuts-modal">
+          <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-close"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Launch Mission with active target</span>
+          <kbd class="shortcut-key">Ctrl + Enter</kbd>
+        </div>
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Abort active running scan</span>
+          <kbd class="shortcut-key">Ctrl + C</kbd>
+        </div>
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Switch to DAG Canvas view</span>
+          <kbd class="shortcut-key">1</kbd>
+        </div>
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Switch to Findings view</span>
+          <kbd class="shortcut-key">2</kbd>
+        </div>
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Switch to Live Terminal stream</span>
+          <kbd class="shortcut-key">3</kbd>
+        </div>
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Switch to Sessions Archive</span>
+          <kbd class="shortcut-key">4</kbd>
+        </div>
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Close inspector drawer / dialog</span>
+          <kbd class="shortcut-key">Esc</kbd>
+        </div>
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Toggle Dark / Light Mode</span>
+          <kbd class="shortcut-key">T</kbd>
+        </div>
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Pan canvas</span>
+          <kbd class="shortcut-key">Drag / Mousewheel</kbd>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       Feature A: Mission Launchpad Modal (Cockpit & Recent Targets)
+       ====================================================================== -->
+  <div class="modal-backdrop" id="modal-launchpad" style="display:none;">
+    <div class="modal-card launchpad-card">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <div>
+            <div class="modal-title">Mission Control Launchpad</div>
+            <div class="modal-subtitle">Pick a recent engagement, resume an active target, or start fresh.</div>
+          </div>
+        </div>
+        <button class="btn-icon-subtle" id="btn-close-launchpad-modal" title="Skip to Canvas (Esc)">
+          <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-close"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body launchpad-body">
+        <!-- Section 1: Recent Engagements -->
+        <div class="launchpad-section">
+          <div class="launchpad-section-header">
+            <span class="launchpad-section-title">Recent Reconnaissance Engagements</span>
+            <span class="launchpad-section-count" id="launchpad-recent-count">Loading...</span>
+          </div>
+          <div class="launchpad-recent-grid" id="launchpad-recent-grid">
+            <!-- Dynamically populated via JS -->
+            <div class="empty-state-card">Loading recent missions...</div>
+          </div>
+        </div>
+
+        <!-- Section 2: Start Fresh Target -->
+        <div class="launchpad-section">
+          <div class="launchpad-section-title" style="margin-bottom:10px;">Or Launch a Fresh Mission</div>
+          <form id="form-launchpad-quick" class="launchpad-quick-form">
+            <div class="mission-input-group" style="flex:1;">
+              <svg viewBox="0 0 24 24" class="svg-icon input-prefix-icon"><use href="#icon-findings"/></svg>
+              <input type="text" id="launchpad-input-target" placeholder="Enter target (e.g. uber.com or hackerone.com)..." required autocomplete="off">
+            </div>
+            <div class="mission-select-group">
+              <select id="launchpad-select-workflow">
+                <option value="default">Default 7-Stage (Full Surface)</option>
+                <option value="fast">Fast Surface Triage</option>
+                <option value="passive">Stealth Passive OSINT</option>
+                <option value="vuln">Direct Vuln Assessment</option>
+              </select>
+            </div>
+            <button type="submit" class="btn-launch">
+              <svg viewBox="0 0 24 24" class="svg-icon btn-svg"><use href="#icon-play"/></svg>
+              <span>Launch</span>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class="modal-footer launchpad-footer">
+        <label class="launchpad-check-label">
+          <input type="checkbox" id="check-skip-launchpad-startup">
+          <span>Don't show on startup (Open directly in Canvas)</span>
+        </label>
+        <button class="btn-secondary" id="btn-launchpad-skip">
+          <span>Skip &bull; Open Studio Canvas</span>
+          <kbd class="kbd-subtle">Esc</kbd>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       Feature B: Register Custom Tool / Script Modal
+       ====================================================================== -->
+  <div class="modal-backdrop" id="modal-custom-tool" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Register Custom Tool / Script</div>
+        <button class="btn-icon-subtle" id="btn-close-custom-tool-modal">
+          <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-close"/></svg>
+        </button>
+      </div>
+      <form id="form-register-custom-tool">
+        <div class="modal-body">
+          <div class="form-field">
+            <label class="form-label" for="custom-tool-name">Tool Identifier / Name</label>
+            <input type="text" id="custom-tool-name" class="form-input" placeholder="e.g. custom_subenum or findsub_sh" required>
+            <span class="form-hint">Used as the unique node ID in the DAG scheduler.</span>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="custom-tool-cmd">Execution Command Template</label>
+            <input type="text" id="custom-tool-cmd" class="form-input" placeholder="e.g. bash subenum.sh -d {target} -o {output}" required>
+            <span class="form-hint">Supports {target}, {input}, and {output} placeholder interpolation.</span>
+          </div>
+          <div class="form-row-2">
+            <div class="form-field">
+              <label class="form-label" for="custom-tool-input">Input Port Type</label>
+              <select id="custom-tool-input" class="form-select">
+                <option value="TargetDomain">TargetDomain (Single Root)</option>
+                <option value="FQDN">FQDN (Subdomain Stream)</option>
+                <option value="HTTPUrl">HTTPUrl (Web Endpoints)</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="custom-tool-output">Output Port Type</label>
+              <select id="custom-tool-output" class="form-select">
+                <option value="FQDN">FQDN (Discovered Domains)</option>
+                <option value="HTTPUrl">HTTPUrl (Probed URLs)</option>
+                <option value="Finding">Finding (Vulnerabilities)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="btn-cancel-custom-tool">Cancel</button>
+          <button type="submit" class="btn-primary-gradient">Register Plugin &bull; Add to Arsenal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       Feature C: Workspace / Project Management Modal
+       ====================================================================== -->
+  <div class="modal-backdrop" id="modal-workspaces" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Engagement Workspaces</div>
+        <button class="btn-icon-subtle" id="btn-close-workspaces-modal">
+          <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-close"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="workspace-list" id="workspace-list">
+          <!-- Populated dynamically via JS -->
+        </div>
+
+        <div style="border-top: 1px solid var(--border-subtle); padding-top: 14px; margin-top: 6px;">
+          <div class="drawer-section-title">Create New Workspace</div>
+          <form id="form-create-workspace" style="display:flex; gap:8px; margin-top:8px;">
+            <input type="text" id="input-new-workspace-name" class="form-input" placeholder="e.g. Uber Bug Bounty or Tesla Redteam..." required style="flex:1;">
+            <button type="submit" class="btn-primary-gradient">Create</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       Mission Deletion Confirmation Modal
+       ====================================================================== -->
+  <div class="modal-backdrop" id="modal-confirm-delete" style="display:none;">
+    <div class="modal-card" style="max-width:440px;">
+      <div class="modal-header">
+        <div class="modal-title" style="display:flex; align-items:center; gap:8px; color:var(--color-rose);">
+          <svg viewBox="0 0 24 24" class="svg-icon" style="color:var(--color-rose);"><use href="#icon-trash"/></svg>
+          <span id="confirm-delete-title">Delete Mission</span>
+        </div>
+        <button class="btn-icon-subtle" id="btn-close-delete-modal">
+          <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-close"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-delete-message" style="color:var(--text-normal); font-size:13px; line-height:1.5;">
+          Are you sure you want to permanently delete this reconnaissance mission?
+        </p>
+        <div id="confirm-delete-target-preview" style="margin-top:12px; padding:10px 12px; background:var(--bg-input); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); font-family:var(--font-mono); font-size:12px; color:var(--text-high);">
+          Target: <span id="confirm-delete-target-name">...</span>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
+          <button type="button" class="btn-secondary" id="btn-cancel-delete">Cancel</button>
+          <button type="button" class="btn-danger-gradient" id="btn-execute-delete">
+            <svg viewBox="0 0 24 24" class="svg-icon"><use href="#icon-trash"/></svg>
+            <span id="btn-execute-delete-text">Delete Permanently</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toast-container"></div>
 
   <script src="/app.js"></script>
 </body>

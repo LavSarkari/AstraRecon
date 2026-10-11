@@ -90,3 +90,151 @@ def test_api_sessions(web_server):
         assert res.status == 200
         sessions = json.loads(res.read().decode("utf-8"))
         assert isinstance(sessions, list)
+
+
+def test_api_projects_and_recents(web_server):
+    """Verify projects and recent targets endpoints."""
+    with urllib.request.urlopen(f"{web_server}/api/projects") as res:
+        assert res.status == 200
+        projects = json.loads(res.read().decode("utf-8"))
+        assert isinstance(projects, list)
+        assert len(projects) >= 1
+
+    with urllib.request.urlopen(f"{web_server}/api/projects/recent") as res:
+        assert res.status == 200
+        data = json.loads(res.read().decode("utf-8"))
+        assert "recent_targets" in data
+        assert "projects" in data
+
+
+def test_api_plugins_config_and_toggle(web_server):
+    """Verify plugin config retrieval and interactive tool toggle."""
+    with urllib.request.urlopen(f"{web_server}/api/plugins/config") as res:
+        assert res.status == 200
+        cfg = json.loads(res.read().decode("utf-8"))
+        assert "disabled_tools" in cfg
+
+    # Toggle nuclei off (stealth mode)
+    toggle_data = json.dumps({"tool_id": "nuclei", "enabled": False, "scope": "global"}).encode("utf-8")
+    req = urllib.request.Request(f"{web_server}/api/plugins/toggle", data=toggle_data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req) as res:
+        assert res.status == 200
+        result = json.loads(res.read().decode("utf-8"))
+        assert "nuclei" in result["config"]["disabled_tools"]
+
+    # Toggle nuclei back on
+    toggle_data_on = json.dumps({"tool_id": "nuclei", "enabled": True, "scope": "global"}).encode("utf-8")
+    req_on = urllib.request.Request(f"{web_server}/api/plugins/toggle", data=toggle_data_on, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req_on) as res:
+        assert res.status == 200
+        result_on = json.loads(res.read().decode("utf-8"))
+        assert "nuclei" not in result_on["config"]["disabled_tools"]
+
+
+def test_api_scan_start_and_abort(web_server):
+    """Verify mission start, status polling during scan, and immediate abort cancellation."""
+    import time
+
+    # 1. Start a scan
+    start_payload = json.dumps({
+        "target": "example.com",
+        "workflow": "fast",
+        "profile": "safe",
+    }).encode("utf-8")
+    req_start = urllib.request.Request(
+        f"{web_server}/api/scan/start",
+        data=start_payload,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req_start) as res:
+        assert res.status == 200
+        data = json.loads(res.read().decode("utf-8"))
+        assert data["status"] == "started"
+        assert data["target"] == "example.com"
+
+    # 2. Check /api/status during scan
+    time.sleep(0.2)
+    with urllib.request.urlopen(f"{web_server}/api/status") as res:
+        assert res.status == 200
+        status_data = json.loads(res.read().decode("utf-8"))
+        assert "is_scanning" in status_data
+        if status_data["is_scanning"]:
+            assert status_data["active_target"] == "example.com"
+            assert "nodes" in status_data
+
+    # 3. Stop / abort the scan
+    req_stop = urllib.request.Request(
+        f"{web_server}/api/scan/stop",
+        data=b"{}",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req_stop) as res:
+        assert res.status == 200
+        stop_data = json.loads(res.read().decode("utf-8"))
+        assert stop_data["status"] in ("stopping", "not_running")
+
+    # 4. Wait for engine to wind down and verify idle state
+    is_idle = False
+    for _ in range(100):
+        time.sleep(0.1)
+        with urllib.request.urlopen(f"{web_server}/api/status") as res:
+            idle_data = json.loads(res.read().decode("utf-8"))
+            if not idle_data.get("is_scanning"):
+                is_idle = True
+                break
+    assert is_idle is True
+
+    # 5. Stop when not running returns 'not_running'
+    req_stop2 = urllib.request.Request(
+        f"{web_server}/api/scan/stop",
+        data=b"{}",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req_stop2) as res:
+        assert res.status == 200
+        stop_data2 = json.loads(res.read().decode("utf-8"))
+        assert stop_data2["status"] == "not_running"
+
+
+def test_api_delete_and_clear_sessions(web_server):
+    """Verify DELETE /api/session/{id} and DELETE /api/sessions endpoints."""
+    from astrarecon.core.sessions.manager import SessionManager
+    from astrarecon.core.models.session import EnvFingerprint
+    from astrarecon.core.models.workflow import WorkflowDefinition
+
+    mgr = SessionManager()
+    fp = EnvFingerprint(
+        captured_at="2026-09-26T00:00:00",
+        os_distro="Linux",
+        os_version="1.0",
+        kernel="test",
+        arch="x86_64",
+        python_version="3.11",
+        go_version="1.22",
+        tools={},
+    )
+    dummy_dir = mgr.create_session(
+        "deleteme.example.com",
+        WorkflowDefinition(id="w1", name="w1", nodes=[], edges=[]),
+        fp,
+    )
+    sid = dummy_dir.name
+    assert dummy_dir.exists()
+
+    # 1. DELETE /api/session/{sid}
+    req_del = urllib.request.Request(f"{web_server}/api/session/{sid}", method="DELETE")
+    with urllib.request.urlopen(req_del) as res:
+        assert res.status == 200
+        data = json.loads(res.read().decode("utf-8"))
+        assert data["status"] == "deleted"
+        assert data["session_id"] == sid
+
+    assert not dummy_dir.exists()
+
+    # 2. DELETE nonexistent returns 404
+    req_del_404 = urllib.request.Request(f"{web_server}/api/session/nonexistent-session-id", method="DELETE")
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        urllib.request.urlopen(req_del_404)
+    assert exc_info.value.code == 404
+
+

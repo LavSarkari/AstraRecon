@@ -66,6 +66,14 @@ class ExecutionEngine:
         self.node_artifacts: dict[str, dict[str, Path]] = {}  # node_id -> {port_name: artifact_path}
         self.checkpoints: dict[str, CheckpointDescriptor] = {}
         self.semaphore = asyncio.Semaphore(max_concurrent_workers)
+        self._cancelled: bool = False
+
+    def cancel(self) -> None:
+        """Explicitly cancels the running engine and terminates all active worker tasks."""
+        self._cancelled = True
+        for task in list(self.worker_tasks):
+            if not task.done():
+                task.cancel()
 
     def _update_node_status(
         self,
@@ -128,6 +136,8 @@ class ExecutionEngine:
 
         try:
             while (len(self.completed_nodes) + len(self.failed_nodes)) < len(self.graph.nodes):
+                if self._cancelled:
+                    raise asyncio.CancelledError("Execution was cancelled by operator.")
                 ready_nodes = self.graph.get_ready_frontier(
                     self.completed_nodes,
                     self.in_flight_nodes,
@@ -246,6 +256,20 @@ class ExecutionEngine:
                     item_count=total_items if total_items > 0 else None,
                 )
 
+            except asyncio.CancelledError:
+                end_time = datetime.utcnow()
+                checkpoint.status = NodeExecutionStatus.FAILED
+                checkpoint.completed_at = end_time
+                checkpoint.duration_seconds = (end_time - start_time).total_seconds()
+                checkpoint.error_message = "Cancelled by user"
+                self.failed_nodes.add(node_id)
+                self.checkpoints[node_id] = checkpoint
+                try:
+                    self.session_manager.save_checkpoint(self.session_dir, checkpoint)
+                except Exception:
+                    pass
+                self._update_node_status(node_id, NodeExecutionStatus.FAILED, message="Aborted")
+                raise
             except Exception as e:
                 end_time = datetime.utcnow()
                 checkpoint.status = NodeExecutionStatus.FAILED

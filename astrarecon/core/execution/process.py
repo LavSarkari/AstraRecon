@@ -125,7 +125,11 @@ class ProcessRunner:
 
                 # Final force-kill
                 os.killpg(pid, signal.SIGKILL)
-            except ProcessLookupError:
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    pass
+            except (ProcessLookupError, PermissionError, OSError):
                 pass
         else:
             # Windows process tree termination

@@ -356,6 +356,12 @@ def execute_scan(state: ConsoleState, args: Optional[list[str]] = None):
         console.print(f"\n[bold {COLOR_WARNING}][!] Scan interrupted by user.[/bold {COLOR_WARNING}]\n")
     except Exception as e:
         console.print(f"\n[bold {COLOR_ERROR}][-] Execution error:[/bold {COLOR_ERROR}] {e}\n")
+    finally:
+        console.show_cursor(True)
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
 
 
 def build_completer():

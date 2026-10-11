@@ -1,8 +1,10 @@
 """DAG Execution Engine: Concurrency control, node dispatch, checkpointing, and CAS integration."""
 
 import asyncio
+import json
 import os
 import shutil
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
@@ -60,6 +62,7 @@ class ExecutionEngine:
         self.completed_nodes: set[str] = set()
         self.failed_nodes: set[str] = set()
         self.in_flight_nodes: set[str] = set()
+        self.worker_tasks: set[asyncio.Task] = set()
         self.node_artifacts: dict[str, dict[str, Path]] = {}  # node_id -> {port_name: artifact_path}
         self.checkpoints: dict[str, CheckpointDescriptor] = {}
         self.semaphore = asyncio.Semaphore(max_concurrent_workers)
@@ -146,7 +149,9 @@ class ExecutionEngine:
                 # Launch ready nodes concurrently up to semaphore limit
                 for node_id in ready_nodes:
                     self.in_flight_nodes.add(node_id)
-                    asyncio.create_task(self._execute_node_worker(node_id))
+                    task = asyncio.create_task(self._execute_node_worker(node_id))
+                    self.worker_tasks.add(task)
+                    task.add_done_callback(self.worker_tasks.discard)
 
                 await asyncio.sleep(0.05)
 
@@ -164,10 +169,9 @@ class ExecutionEngine:
         except (asyncio.CancelledError, KeyboardInterrupt):
             snapshot.status = SessionStatus.INTERRUPTED
             self.session_manager.save_session_snapshot(self.session_dir, snapshot)
-            # Cancel any in-flight worker tasks
-            for task in asyncio.all_tasks():
-                if task is not asyncio.current_task():
-                    task.cancel()
+            # Cancel only in-flight worker tasks created by this engine instance
+            for task in list(self.worker_tasks):
+                task.cancel()
             raise
         except Exception as e:
             snapshot.status = SessionStatus.FAILED
@@ -302,7 +306,10 @@ class ExecutionEngine:
 
         elif node.type == "builtin.scope_guard":
             # Collect input artifact from in-edges
-            in_edge = self.graph.in_edges[node.id][0]
+            in_edges = self.graph.in_edges.get(node.id, [])
+            if not in_edges or in_edges[0].source not in self.node_artifacts:
+                raise ProcessExecutionError(f"Missing upstream artifact for {node.id}")
+            in_edge = in_edges[0]
             in_path = self.node_artifacts[in_edge.source][in_edge.source_port]
             in_scope_file = artifacts_dir / f"{node.id}_in_scope.txt"
             quarantine_file = self.session_dir / "quarantine" / "out_of_scope.txt"
@@ -326,7 +333,7 @@ class ExecutionEngine:
             # Collect multiple inputs from all completed in-edges
             input_paths = [
                 self.node_artifacts[edge.source][edge.source_port]
-                for edge in self.graph.in_edges[node.id]
+                for edge in self.graph.in_edges.get(node.id, [])
                 if edge.source in self.node_artifacts and edge.source_port in self.node_artifacts[edge.source]
             ]
             out_file = artifacts_dir / f"{node.id}_deduped.txt"
@@ -344,7 +351,10 @@ class ExecutionEngine:
             )
 
         elif node.type == "builtin.delta_engine":
-            in_edge = self.graph.in_edges[node.id][0]
+            in_edges = self.graph.in_edges.get(node.id, [])
+            if not in_edges or in_edges[0].source not in self.node_artifacts:
+                raise ProcessExecutionError(f"Missing upstream artifact for {node.id}")
+            in_edge = in_edges[0]
             current_path = self.node_artifacts[in_edge.source][in_edge.source_port]
             baseline_path = self.session_dir / "baseline.db"  # Or historical snapshot
             added_file = artifacts_dir / f"{node.id}_added.txt"
@@ -437,7 +447,9 @@ class ExecutionEngine:
         inputs_content: dict[str, str] = {}
         input_hash_material = []
 
-        for edge in self.graph.in_edges[node.id]:
+        for edge in self.graph.in_edges.get(node.id, []):
+            if edge.source not in self.node_artifacts or edge.source_port not in self.node_artifacts[edge.source]:
+                continue
             artifact_path = self.node_artifacts[edge.source][edge.source_port]
             companion = artifact_path.with_name(f"{artifact_path.stem}_urls.txt")
             if companion.exists() and companion.stat().st_size > 0:

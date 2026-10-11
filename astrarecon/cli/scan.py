@@ -655,64 +655,93 @@ def run_scan(
 
     start_time = time.time()
 
-    with Live(status_panel.render(), console=console, refresh_per_second=10, transient=False) as live:
-        def on_status_change(node_id: str, status, item_count=None, message=None):
-            status_panel.update_status(node_id, status, item_count, message)
-            live.update(status_panel.render())
+    live = Live(status_panel.render(), console=console, auto_refresh=False, transient=False)
+    live.start()
 
-        engine = ExecutionEngine(
-            workflow=wf,
-            session_dir=session_dir,
-            plugin_registry=plugin_registry,
-            cas=cas,
-            session_manager=session_mgr,
-            max_concurrent_workers=3,
-            proxy=proxy,
-            custom_headers=header,
-            on_node_status_change=on_status_change,
-        )
-
-        async def _run_with_live_ticker():
-            stop_event = asyncio.Event()
-
-            async def _live_ticker():
-                while not stop_event.is_set():
-                    live.update(status_panel.render())
-                    await asyncio.sleep(0.1)
-
-            ticker_task = asyncio.create_task(_live_ticker())
-            try:
-                result = await engine.run(resume=is_resume)
-                return result
-            finally:
-                stop_event.set()
-                ticker_task.cancel()
-                try:
-                    await ticker_task
-                except (asyncio.CancelledError, Exception):
-                    pass
-                live.update(status_panel.render())
-
+    def on_status_change(node_id: str, status, item_count=None, message=None):
+        status_panel.update_status(node_id, status, item_count, message)
         try:
-            snapshot = asyncio.run(_run_with_live_ticker())
-        except (KeyboardInterrupt, asyncio.CancelledError):
-            live.update(status_panel.render())
+            live.update(status_panel.render(), refresh=True)
+        except Exception:
+            pass
+
+    engine = ExecutionEngine(
+        workflow=wf,
+        session_dir=session_dir,
+        plugin_registry=plugin_registry,
+        cas=cas,
+        session_manager=session_mgr,
+        max_concurrent_workers=3,
+        proxy=proxy,
+        custom_headers=header,
+        on_node_status_change=on_status_change,
+    )
+
+    async def _run_with_live_ticker():
+        stop_event = asyncio.Event()
+
+        async def _live_ticker():
+            while not stop_event.is_set():
+                try:
+                    live.update(status_panel.render(), refresh=True)
+                except Exception:
+                    pass
+                await asyncio.sleep(0.15)
+
+        ticker_task = asyncio.create_task(_live_ticker())
+        try:
+            result = await engine.run(resume=is_resume)
+            return result
+        finally:
+            stop_event.set()
+            ticker_task.cancel()
             try:
-                cur_snap = session_mgr.load_session_snapshot(session_dir)
-                cur_snap.status = SessionStatus.INTERRUPTED
-                session_mgr.save_session_snapshot(session_dir, cur_snap)
+                await ticker_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            try:
+                live.update(status_panel.render(), refresh=True)
             except Exception:
                 pass
 
-            console.print(f"\n[bold yellow]Scan paused by user (Ctrl+C).[/bold yellow]")
-            console.print(f"[dim]Session [bold white]{session_dir.name}[/bold white] state and checkpoints saved.[/dim]")
-            console.print(f"[bold cyan]To resume anytime, run:[/bold cyan] astrarecon scan {target} --resume {session_dir.name}\n")
-            raise typer.Exit(code=130)
-        except Exception as e:
-            live.update(status_panel.render())
-            console.print(f"\n[bold red]Workflow execution error:[/bold red] {e}")
-            console.print(f"[yellow]To resume execution, run: astrarecon scan {target} --resume {session_dir.name}[/yellow]\n")
-            raise typer.Exit(code=1)
+    try:
+        snapshot = asyncio.run(_run_with_live_ticker())
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        # Stop live cleanly BEFORE any console printing to prevent terminal freeze/corruption
+        try:
+            live.stop()
+        except Exception:
+            pass
+        console.show_cursor(True)
+
+        try:
+            cur_snap = session_mgr.load_session_snapshot(session_dir)
+            cur_snap.status = SessionStatus.INTERRUPTED
+            session_mgr.save_session_snapshot(session_dir, cur_snap)
+        except Exception:
+            pass
+
+        console.print(f"\n[bold yellow]Scan paused by user (Ctrl+C).[/bold yellow]")
+        console.print(f"[dim]Session [bold white]{session_dir.name}[/bold white] state and checkpoints saved.[/dim]")
+        console.print(f"[bold cyan]To resume anytime, run:[/bold cyan] astrarecon scan {target} --resume {session_dir.name}\n")
+        raise typer.Exit(code=130)
+    except Exception as e:
+        # Stop live cleanly BEFORE printing error
+        try:
+            live.stop()
+        except Exception:
+            pass
+        console.show_cursor(True)
+
+        console.print(f"\n[bold red]Workflow execution error:[/bold red] {e}")
+        console.print(f"[yellow]To resume execution, run: astrarecon scan {target} --resume {session_dir.name}[/yellow]\n")
+        raise typer.Exit(code=1)
+    finally:
+        try:
+            live.stop()
+        except Exception:
+            pass
+        console.show_cursor(True)
 
     # -----------------------------------------------------------------------
     # Load real scan results from artifact files

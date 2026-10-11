@@ -441,6 +441,9 @@ def build_completer():
                 "remove": None,
                 "show": None,
             },
+            "ui": None,
+            "web": None,
+            "dashboard": None,
             "banner": None,
             "clear": None,
             "help": None,
@@ -696,6 +699,15 @@ def run_console():
                     remove_plugin(args[1], force="--force" in args or "-f" in args)
                 else:
                     show_plugins()
+
+            elif cmd in ("ui", "web", "dashboard"):
+                from astrarecon.cli.ui_server import run_ui
+                try:
+                    run_ui(no_browser=False)
+                except (typer.Exit, KeyboardInterrupt):
+                    pass
+                finally:
+                    console.show_cursor(True)
 
             else:
                 console.print(f"[bold {COLOR_ERROR}]Unknown command:[/bold {COLOR_ERROR}] '{cmd}'")

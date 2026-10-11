@@ -232,7 +232,25 @@ astrarecon doctor --install-missing
 
 ---
 
-## Usage Guide
+### Visual DAG Canvas & Web Dashboard
+
+Launch the zero-overhead, real-time visual web interface (< 20MB RAM, optimized for cheap VPSs & cloud instances):
+
+```bash
+# Launch dashboard on localhost:8080 and auto-open browser
+astrarecon ui
+
+# Bind to 0.0.0.0 on a remote VPS for access over network/reverse proxy
+astrarecon ui --host 0.0.0.0 --port 8080 --no-browser
+```
+
+Features included in the Web Canvas:
+- **Interactive DAG Pipeline**: Visual topological node graph with glowing data paths, live timers, and item yields.
+- **Mission Controller**: Launch and abort scans with preset selections (`default`, `fast`, `passive`, `vuln`).
+- **Real-Time Log Streamer**: Server-Sent Events (SSE) streaming node stdout/stderr outputs directly to your browser.
+- **Findings Explorer**: Searchable, filterable subdomains, live probed endpoints, and Nuclei security findings.
+- **Session Archives & AI Export**: One-click download of JSON, CSV, Markdown, or token-budgeted AI distillation bundles.
+- **Arsenal Doctor**: Interactive telemetry dashboard displaying the health of all 13 security tool binaries.
 
 ### Interactive Recon Console
 

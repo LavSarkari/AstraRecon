@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AstraRecon — Cosmic Reconnaissance Engine & DAG Canvas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+  <!-- ======================================================================
+       Header & Brand Navigation
+       ====================================================================== -->
+  <header class="app-header">
+    <div class="brand-section">
+      <img src="/logo.png" alt="AstraRecon" class="brand-logo" onerror="this.style.display='none'">
+      <div class="brand-title">
+        <span class="brand-astra">ASTRA</span><span class="brand-recon">RECON</span>
+      </div>
+      <span class="badge-version">v0.2.0 • CANVAS</span>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab-btn active" data-tab="canvas">
+        <span>⚡</span> DAG Canvas
+      </button>
+      <button class="nav-tab-btn" data-tab="findings">
+        <span>🎯</span> Findings
+      </button>
+      <button class="nav-tab-btn" data-tab="logs">
+        <span>💻</span> Live Terminal
+      </button>
+      <button class="nav-tab-btn" data-tab="sessions">
+        <span>🗂️</span> Sessions
+      </button>
+      <button class="nav-tab-btn" data-tab="doctor">
+        <span>🩺</span> Arsenal Doctor
+      </button>
+    </nav>
+
+    <!-- Telemetry Indicator -->
+    <div class="header-status-indicator">
+      <div class="telemetry-pill" id="telemetry-status-pill">
+        <span class="pulse-dot"></span>
+        <span id="telemetry-status-text">STANDBY • READY</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ======================================================================
+       Mission Control Bar (Target & Preset Launcher)
+       ====================================================================== -->
+  <div class="mission-bar">
+    <form id="form-mission-launch" style="display:flex; align-items:center; gap:12px; width:100%;">
+      <div class="mission-input-group">
+        <span class="input-icon">🎯</span>
+        <input type="text" id="input-target" placeholder="Enter target domain or URL (e.g. example.com)..." required autocomplete="off">
+      </div>
+
+      <div class="mission-select-group">
+        <select id="select-workflow">
+          <option value="default">Default 7-Stage Pipeline</option>
+          <option value="fast">Fast Surface Triage</option>
+          <option value="passive">Stealth Passive OSINT</option>
+          <option value="vuln">Direct Vuln Assessment</option>
+        </select>
+      </div>
+
+      <div class="mission-select-group">
+        <select id="select-profile">
+          <option value="auto">Profile: Auto (3 Workers)</option>
+          <option value="safe">Profile: Safe (1 Worker)</option>
+          <option value="beast">Profile: Beast (5 Workers)</option>
+        </select>
+      </div>
+
+      <button type="submit" class="btn-launch" id="btn-mission-launch">
+        <span>🚀</span> Launch Mission
+      </button>
+
+      <button type="button" class="btn-stop" id="btn-mission-stop" style="display:none;">
+        <span>⏹</span> Abort Run
+      </button>
+    </form>
+  </div>
+
+  <!-- ======================================================================
+       Main Viewport (Tab Panes)
+       ====================================================================== -->
+  <main class="main-viewport">
+
+    <!-- View 1: Visual Interactive DAG Canvas -->
+    <div class="view-pane active" id="view-canvas">
+      <div class="canvas-container" id="canvas-container">
+        <div class="canvas-viewport-wrapper" id="canvas-viewport">
+          <svg class="canvas-svg-layer" id="canvas-svg-layer"></svg>
+          <div class="canvas-node-layer" id="canvas-node-layer"></div>
+        </div>
+
+        <!-- Zoom Controls -->
+        <div class="canvas-controls">
+          <button class="canvas-control-btn" id="btn-zoom-in" title="Zoom In">+</button>
+          <button class="canvas-control-btn" id="btn-zoom-out" title="Zoom Out">−</button>
+          <button class="canvas-control-btn" id="btn-zoom-reset" title="Reset View">⊙</button>
+        </div>
+
+        <!-- Node Inspector Slide-over Drawer -->
+        <aside class="node-drawer" id="node-drawer">
+          <div class="node-drawer-header">
+            <div>
+              <div class="node-drawer-title" id="drawer-node-name">Node Inspector</div>
+              <div style="font-family:var(--font-mono); font-size:11px; color:var(--color-muted);" id="drawer-node-type">builtin.target_input</div>
+            </div>
+            <button class="node-drawer-close" id="btn-drawer-close">✕</button>
+          </div>
+          <div class="node-drawer-body">
+            <div>
+              <div class="drawer-section-title">Current Execution Status</div>
+              <div id="drawer-node-status">● WAITING</div>
+            </div>
+            <div style="flex:1; display:flex; flex-direction:column;">
+              <div class="drawer-section-title">Real-Time Stage Output & Stderr</div>
+              <pre class="drawer-log-box" id="drawer-log-content">Select a node to inspect logs...</pre>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- View 2: Findings & Attack Surface -->
+    <div class="view-pane" id="view-findings">
+      <div class="content-pane-container">
+        <!-- Stat Cards -->
+        <div class="stats-grid">
+          <div class="stat-card primary">
+            <span class="stat-label">Discovered Subdomains</span>
+            <span class="stat-value" id="stat-subdomains-count">0</span>
+          </div>
+          <div class="stat-card success">
+            <span class="stat-label">Live Probed Hosts</span>
+            <span class="stat-value" id="stat-hosts-count">0</span>
+          </div>
+          <div class="stat-card error">
+            <span class="stat-label">Vulnerabilities Found</span>
+            <span class="stat-value" id="stat-vulns-count">0</span>
+          </div>
+        </div>
+
+        <!-- Vulnerabilities Table -->
+        <div class="table-card" style="margin-bottom:24px;">
+          <div class="table-toolbar">
+            <span style="font-weight:700; font-size:14px; color:#fff;">💥 Security Findings & Vulnerabilities</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:120px;">Severity</th>
+                <th>Finding / Template</th>
+                <th>Target Host / URL</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-vulns">
+              <tr><td colspan="3" style="text-align:center; padding:20px; color:var(--color-muted);">No vulnerabilities detected yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Live Hosts Table -->
+        <div class="table-card" style="margin-bottom:24px;">
+          <div class="table-toolbar">
+            <span style="font-weight:700; font-size:14px; color:#fff;">🚀 Live HTTP Endpoints</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>URL</th>
+                <th style="width:120px;">Status</th>
+                <th>Page Title</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-hosts">
+              <tr><td colspan="3" style="text-align:center; padding:20px; color:var(--color-muted);">No live endpoints probed yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Subdomains Table -->
+        <div class="table-card">
+          <div class="table-toolbar">
+            <span style="font-weight:700; font-size:14px; color:#fff;">🔍 Subdomain Attack Surface</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>FQDN</th>
+                <th style="width:140px;">Status</th>
+                <th style="width:100px;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-subdomains">
+              <tr><td colspan="3" style="text-align:center; padding:20px; color:var(--color-muted);">No subdomains mapped yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- View 3: Live Terminal Stream -->
+    <div class="view-pane" id="view-logs">
+      <div class="console-pane" id="console-log-stream">
+        <div class="log-entry">
+          <span class="log-time">--:--:--</span>
+          <span class="log-level info">SYS</span>
+          <span class="log-text">AstraRecon telemetry console online. Waiting for active pipeline execution...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- View 4: Sessions Explorer -->
+    <div class="view-pane" id="view-sessions">
+      <div class="content-pane-container">
+        <div class="table-card">
+          <div class="table-toolbar">
+            <span style="font-weight:700; font-size:14px; color:#fff;">🗂️ Historical Reconnaissance Missions</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:160px;">Session ID</th>
+                <th>Target</th>
+                <th style="width:120px;">Status</th>
+                <th>Yield Metrics</th>
+                <th>Timestamp</th>
+                <th style="width:200px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-sessions">
+              <tr><td colspan="6" style="text-align:center; padding:20px; color:var(--color-muted);">Loading missions...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- View 5: Arsenal Doctor -->
+    <div class="view-pane" id="view-doctor">
+      <div class="content-pane-container">
+        <div class="stats-grid" style="margin-bottom:24px;">
+          <div class="stat-card">
+            <span class="stat-label">Operating System</span>
+            <span class="stat-value" style="font-size:16px;" id="sys-os">Linux</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Python Environment</span>
+            <span class="stat-value" style="font-size:16px;" id="sys-python">Python 3.11</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Go Compiler</span>
+            <span class="stat-value" style="font-size:16px;" id="sys-go">Go 1.22</span>
+          </div>
+          <div class="stat-card primary">
+            <span class="stat-label">Arsenal Readiness</span>
+            <span class="stat-value" style="font-size:16px;" id="sys-tools-count">13 / 13</span>
+          </div>
+        </div>
+
+        <div style="font-weight:700; font-size:15px; margin-bottom:14px; color:#fff;">Integrated Security Arsenal (13 Tools)</div>
+        <div class="tools-grid" id="tools-grid">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

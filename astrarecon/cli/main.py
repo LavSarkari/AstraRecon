@@ -37,6 +37,7 @@ from astrarecon.cli.plugins import app as plugins_app
 from astrarecon.cli.scan import app as scan_app
 from astrarecon.cli.update import app as update_app
 from astrarecon.cli.console import app as console_app
+from astrarecon.cli.ui_server import app as ui_app
 
 app = typer.Typer(
     name="astrarecon",
@@ -48,6 +49,8 @@ console = Console(legacy_windows=False)
 # Register subcommands
 app.add_typer(console_app, name="console")
 app.add_typer(scan_app, name="scan")
+app.add_typer(ui_app, name="ui")
+app.add_typer(ui_app, name="web")
 app.add_typer(doctor_app, name="doctor")
 app.add_typer(sessions_app, name="sessions")
 app.add_typer(plugins_app, name="plugins")
